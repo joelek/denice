@@ -195,12 +195,16 @@ auto get_opencl_platform()
 	for (auto& platform : platforms) {
 		auto name = platform.getInfo<CL_PLATFORM_NAME>(&status);
 		OPENCL_CHECK_STATUS();
-		fprintf(stderr, "\t\"%s\"\n", name.c_str());
+		auto version = platform.getInfo<CL_PLATFORM_VERSION>(&status);
+		OPENCL_CHECK_STATUS();
+		fprintf(stderr, "\t\"%s\" (%s)\n", name.c_str(), version.c_str());
 	}
 	auto platform = platforms[0];
 	auto name = platform.getInfo<CL_PLATFORM_NAME>(&status);
 	OPENCL_CHECK_STATUS();
-	fprintf(stderr, "Selected platform \"%s\"\n", name.c_str());
+	auto version = platform.getInfo<CL_PLATFORM_VERSION>(&status);
+	OPENCL_CHECK_STATUS();
+	fprintf(stderr, "Selected platform \"%s\" (%s)\n", name.c_str(), version.c_str());
 	return platform;
 }
 
