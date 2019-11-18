@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <CL/cl.hpp>
+#include "dct_denoise.hpp"
 
 #define BLOCK_SIZE 8
 
@@ -268,45 +269,10 @@ auto get_opencl_program(const cl::Context& context, const cl::Device& device, co
 auto get_opencl_kernel(const cl::Program& program, const std::string& name)
 -> cl::Kernel {
 	auto status = CL_SUCCESS;
+	fprintf(stderr, "Looking for kernel \"%s\"...\n", name.c_str());
 	auto kernel = cl::Kernel(program, name.c_str(), &status);
 	OPENCL_CHECK_STATUS();
 	return kernel;
-}
-
-auto read_file_contents(const std::string& filename)
--> std::string {
-	auto file = fopen(filename.c_str(), "rb");
-	if (file == nullptr) {
-		fprintf(stderr, "Error opening file \"%s\"\n!", filename.c_str());
-		throw EXIT_FAILURE;
-	}
-	if (fseek(file, 0, SEEK_END) != 0) {
-		fprintf(stderr, "Failed seeking in \"%s\"\n!", filename.c_str());
-		throw EXIT_FAILURE;
-	}
-	auto told = ftell(file);
-	if (told == -1) {
-		fprintf(stderr, "Failed telling for \"%s\"\n!", filename.c_str());
-		throw EXIT_FAILURE;
-	}
-	auto length = static_cast<unsigned long int>(told);
-	if (fseek(file, 0, SEEK_SET) != 0) {
-		fprintf(stderr, "Failed seeking in \"%s\"\n!", filename.c_str());
-		throw EXIT_FAILURE;
-	}
-	auto buffer = static_cast<char*>(malloc(length + 1));
-	if (buffer == nullptr) {
-		throw EXIT_FAILURE;
-	}
-	buffer[length] = 0;
-	if (fread(buffer, 1, length, file) != length) {
-		fprintf(stderr, "Failed reading from \"%s\"\n!", filename.c_str());
-		throw EXIT_FAILURE;
-	}
-	auto contents = std::string(buffer, length);
-	free(buffer);
-	buffer = nullptr;
-	return contents;
 }
 
 auto set_binary_input_output()
@@ -406,8 +372,7 @@ auto main(int argc, char** argv)
 		auto device = get_opencl_device(platform);
 		auto context = get_opencl_context(device);
 		auto queue = get_opencl_queue(context, device);
-		auto dct_denoise_source = read_file_contents("dct_denoise.cl");
-		auto program = get_opencl_program(context, device, dct_denoise_source);
+		auto program = get_opencl_program(context, device, dct_denoise);
 		auto filter_kernel = get_opencl_kernel(program, "filter_kernel");
 		status = filter_kernel.setArg(4, arg_strength);
 		OPENCL_CHECK_STATUS();
