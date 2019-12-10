@@ -6,5 +6,6 @@ PATH_INCLUDE="";
 PATH_LIBRARY="";
 LINKED_LIBRARIES="-l stdc++ -l OpenCL";
 
-gcc $COMPILER_OPTIONS $COMPILER_DEFINES $PATH_INCLUDE -c ./dct_denoise.cpp -o ./build/dct_denoise.o $PATH_LIBRARY $LINKED_LIBRARIES;
-gcc $COMPILER_OPTIONS $COMPILER_DEFINES $PATH_INCLUDE ./build/dct_denoise.o denice.cpp -o ./build/denice $PATH_LIBRARY $LINKED_LIBRARIES;
+mkdir -p build
+gcc $COMPILER_OPTIONS $COMPILER_DEFINES -I "$PATH_INCLUDE" -c ./dct_denoise.cpp -o ./build/dct_denoise.o -L "$PATH_LIBRARY" $LINKED_LIBRARIES;
+gcc $COMPILER_OPTIONS $COMPILER_DEFINES -I "$PATH_INCLUDE" ./build/dct_denoise.o denice.cpp -o ./build/denice -L "$PATH_LIBRARY" $LINKED_LIBRARIES;
