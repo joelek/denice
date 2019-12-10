@@ -260,7 +260,7 @@ auto get_opencl_program(const cl::Context& context, const cl::Device& device, co
 		OPENCL_CHECK_STATUS();
 	} catch (...) {
 		auto log = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-		fprintf(stderr, log.c_str());
+		fprintf(stderr, "%s", log.c_str());
 		throw EXIT_FAILURE;
 	}
 	return program;
