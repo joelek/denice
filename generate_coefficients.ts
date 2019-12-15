@@ -31,7 +31,7 @@ function generate_code(size: number, precision: number): string {
 		let string = pad_left(" ", coefficient.toFixed(precision), precision + 3);
 		return concat("\t", string, "f");
 	}).join(",\n");
-	return concat("__constant float dct_coefficients[", size * size, "] = {\n", string, "\n}\n");
+	return concat("__constant float dct_coefficients[", size * size, "] = {\n", string, "\n};\n");
 }
 
 console.log(generate_code(8, 20));
