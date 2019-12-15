@@ -1,6 +1,6 @@
 # @joelek/denice
 
-Hardware-accelerated efficient video denoising.
+Hardware-accelerated detail-preserving video denoising.
 
 ## Technology
 
@@ -11,8 +11,8 @@ This project uses a denoising technique called DCT-denoising. The technique expl
 Set up the OpenCL SDK for your platform target and make sure that the compiler finds the required include files and libraries. You can choose between either configuring the compiler or editing the paths in the make script `make.sh`.
 
 ```
-PATH_INCLUDE="-I <path>"
-PATH_LIBRARY="-L <path>"
+PATH_INCLUDE="<path>"
+PATH_LIBRARY="<path>"
 ```
 
 ## Build
