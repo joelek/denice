@@ -287,7 +287,7 @@ auto set_binary_input_output()
 	}
 }
 
-auto filter(cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* image_buffer, const channel_t& channel)
+auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* image_buffer, const channel_t& channel)
 -> void {
 	auto origin = cl::size_t<3>();
 	origin[0] = 0;
