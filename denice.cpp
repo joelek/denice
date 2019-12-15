@@ -103,8 +103,8 @@ auto parse_height(const char* raw_height)
 auto parse_strength(const char* raw_strength)
 -> float {
 	auto value = atof(raw_strength);
-	if ((value < 0.0) || (value > 1.0)) {
-		fprintf(stderr, "Denoising strength must be within the unit interval!\n");
+	if (value < 0.0) {
+		fprintf(stderr, "Denoising strength may not be negative!\n");
 		throw EXIT_FAILURE;
 	}
 	return value;
