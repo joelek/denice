@@ -1,6 +1,6 @@
 import * as libfs from "fs";
 
-libfs.readFile("./dct_denoise.cl", "utf8", (error, data) => {
+libfs.readFile("./dct_denoise.opencl.c", "utf8", (error, data) => {
 	if (error === null) {
 		let lines = data.split(/(?:\r\n?)|(?:\n\r?)/g)
 			.map((line) => {
