@@ -154,7 +154,7 @@ void copy_to_block(__local float* block, int x, int y, float s) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void scale_block(__local float* block, int x, int y, float f){
+void scale_block(__local float* block, int x, int y, float f) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	block[offset] *= f;
 	barrier(CLK_LOCAL_MEM_FENCE);
