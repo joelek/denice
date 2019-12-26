@@ -171,7 +171,7 @@ void filter_block(__local float* block, int x, int y, float threshold) {
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
-filter_kernel(__global float *target, __read_only image2d_t source, int x, int y, float threshold) {
+filter_kernel(__global float* target, __read_only image2d_t source, int x, int y, float threshold) {
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
 	int2 ss = { get_image_width(source), get_image_height(source) };
