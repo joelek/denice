@@ -24,6 +24,15 @@
 		}
 #endif
 
+auto compute_modulus(int x, int m)
+-> int {
+	if (m <= 0) {
+		fprintf(stderr, "Modulus must be a positive integer!\n");
+		throw EXIT_FAILURE;
+	}
+	return ((x % m) + m) % m;
+}
+
 auto compute_global_size_ceil(unsigned int data_size, unsigned int local_size)
 -> unsigned int {
 	if (local_size == 0) {
@@ -404,7 +413,7 @@ auto main(int argc, char** argv)
 		while (!feof(stdin)) {
 			auto total_frames_read = 0;
 			for (auto i = frames_read; i < frames_written + frame_buffer_capacity; i++) {
-				auto frame_slot = (i % frame_buffer_capacity);
+				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto new_frames_read = fread(frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdin);
 				if (new_frames_read == 0) {
 					break;
@@ -413,7 +422,7 @@ auto main(int argc, char** argv)
 			}
 			for (auto i = frames_read; i < frames_read + total_frames_read; i++) {
 				if (arg_strength > 0.0) {
-					auto frame_slot = (i % frame_buffer_capacity);
+					auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 					auto frame_buffer_offset = (frame_slot * bytes_per_frame);
 					// TODO: Swap byte order if platform and format endianess differ.
 					for (auto& channel : arg_format.channels) {
@@ -437,7 +446,7 @@ auto main(int argc, char** argv)
 			frames_read += total_frames_read;
 			auto total_frames_written = 0;
 			for (auto i = frames_written; i < frames_read; i++) {
-				auto frame_slot = (i % frame_buffer_capacity);
+				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto new_frames_written = fwrite(frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdout);
 				if (new_frames_written == 0) {
 					break;
