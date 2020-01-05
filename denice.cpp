@@ -409,18 +409,18 @@ auto main(int argc, char** argv)
 			throw EXIT_FAILURE;
 		}
 		auto frames_read = 0;
+		auto frames_filtered = 0;
 		auto frames_written = 0;
 		while (!feof(stdin)) {
-			auto total_frames_read = 0;
 			for (auto i = frames_read; i < frames_written + frame_buffer_capacity; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto new_frames_read = fread(frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdin);
 				if (new_frames_read == 0) {
 					break;
 				}
-				total_frames_read += new_frames_read;
+				frames_read += new_frames_read;
 			}
-			for (auto i = frames_read; i < frames_read + total_frames_read; i++) {
+			for (auto i = frames_filtered; i < frames_read; i++) {
 				if (arg_strength > 0.0) {
 					auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 					auto frame_buffer_offset = (frame_slot * bytes_per_frame);
@@ -442,20 +442,19 @@ auto main(int argc, char** argv)
 					// TODO: Swap byte order if platform and format endianess differ.
 				}
 				usleep(1000);
+				frames_filtered += 1;
 			}
-			frames_read += total_frames_read;
-			auto total_frames_written = 0;
-			for (auto i = frames_written; i < frames_read; i++) {
+			for (auto i = frames_written; i < frames_filtered; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto new_frames_written = fwrite(frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdout);
 				if (new_frames_written == 0) {
 					break;
 				}
-				total_frames_written += new_frames_written;
+				frames_written += new_frames_written;
 			}
-			frames_written += total_frames_written;
 		}
 		fprintf(stderr, "A total of %i frames were read.\n", frames_read);
+		fprintf(stderr, "A total of %i frames were filtered.\n", frames_filtered);
 		fprintf(stderr, "A total of %i frames were written.\n", frames_written);
 		free(frame_buffer);
 		frame_buffer = nullptr;
