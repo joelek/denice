@@ -455,6 +455,7 @@ auto main(int argc, char** argv)
 			}
 			frames_written += total_frames_written;
 		}
+		fprintf(stderr, "A total of %i frames were read.\n", frames_read);
 		fprintf(stderr, "A total of %i frames were written.\n", frames_written);
 		free(frame_buffer);
 		frame_buffer = nullptr;
