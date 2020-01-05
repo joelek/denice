@@ -43,7 +43,7 @@ auto compute_global_size_floor(unsigned int data_size, unsigned int local_size)
 }
 
 struct channel_t {
-	cl::Buffer target;
+	cl::Buffer buffer;
 	cl::Image2D source;
 	int w;
 	int h;
@@ -298,14 +298,14 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	region[1] = channel.h;
 	region[2] = 1;
 	auto status = CL_SUCCESS;
-	status = filter_kernel.setArg(0, channel.target);
+	status = filter_kernel.setArg(0, channel.buffer);
 	OPENCL_CHECK_STATUS();
 	status = filter_kernel.setArg(1, channel.source);
 	OPENCL_CHECK_STATUS();
 	status = queue.enqueueWriteImage(channel.source, CL_TRUE, origin, region, 0, 0, image_buffer);
 	OPENCL_CHECK_STATUS();
 	auto zero = 0.0f;
-	queue.enqueueFillBuffer(channel.target, &zero, 0, (channel.w * channel.h * sizeof(float)));
+	queue.enqueueFillBuffer(channel.buffer, &zero, 0, (channel.w * channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
 		for (auto x = 0; x < BLOCK_SIZE; x++) {
@@ -323,7 +323,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	}
 	status = normalize_kernel.setArg(0, channel.source);
 	OPENCL_CHECK_STATUS();
-	status = normalize_kernel.setArg(1, channel.target);
+	status = normalize_kernel.setArg(1, channel.buffer);
 	OPENCL_CHECK_STATUS();
 	auto local_w = BLOCK_SIZE;
 	auto local_h = BLOCK_SIZE;
@@ -383,9 +383,9 @@ auto main(int argc, char** argv)
 		}
 		auto bytes_per_frame = 0;
 		for (auto& channel : arg_format.channels) {
-			auto target = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
+			auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
 			OPENCL_CHECK_STATUS();
-			channel.target = target;
+			channel.buffer = buffer;
 			auto source = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
 			OPENCL_CHECK_STATUS();
 			channel.source = source;

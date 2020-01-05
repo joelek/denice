@@ -171,7 +171,7 @@ void filter_block(__local float* block, int x, int y, float threshold) {
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
-filter_kernel(__global float* target, __read_only image2d_t source, int x, int y, float threshold) {
+filter_kernel(__global float* buffer, __read_only image2d_t source, int x, int y, float threshold) {
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
 	int2 ss = { get_image_width(source), get_image_height(source) };
@@ -190,12 +190,12 @@ filter_kernel(__global float* target, __read_only image2d_t source, int x, int y
 	filter_block(block, lid.x, lid.y, threshold);
 	compute_idct_xy(block, lid.x, lid.y);
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
-	target[(coords.y * ss.x) + coords.x] += t;
+	buffer[(coords.y * ss.x) + coords.x] += t;
 }
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
-normalize_kernel(__write_only image2d_t target, __global float* source) {
+normalize_kernel(__write_only image2d_t target, __global float* buffer) {
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
 	int2 ts = { get_image_width(target), get_image_height(target) };
@@ -206,7 +206,7 @@ normalize_kernel(__write_only image2d_t target, __global float* source) {
 	if (coords.y >= ts.y) {
 		return;
 	}
-	float s = source[(coords.y * ts.x) + coords.x];
+	float s = buffer[(coords.y * ts.x) + coords.x];
 	int xf = get_scaling_factor(coords.x, ts.x);
 	int yf = get_scaling_factor(coords.y, ts.y);
 	float t = s / (float)(xf * yf);
