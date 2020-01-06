@@ -54,6 +54,7 @@ auto compute_global_size_floor(unsigned int data_size, unsigned int local_size)
 struct channel_t {
 	cl::Buffer buffer;
 	cl::Image2D source;
+	cl::Image2D target;
 	int w;
 	int h;
 };
@@ -80,9 +81,9 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 		auto hw = (fw >> 1);
 		auto hh = (fh >> 1);
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ cl::Buffer(), cl::Image2D(), fw, fh });
-		channels.push_back({ cl::Buffer(), cl::Image2D(), hw, hh });
-		channels.push_back({ cl::Buffer(), cl::Image2D(), hw, hh });
+		channels.push_back({ cl::Buffer(), cl::Image2D(), cl::Image2D(), fw, fh });
+		channels.push_back({ cl::Buffer(), cl::Image2D(), cl::Image2D(), hw, hh });
+		channels.push_back({ cl::Buffer(), cl::Image2D(), cl::Image2D(), hw, hh });
 		return { channels, true };
 	}
 	fprintf(stderr, "Unsupported frame format!\n");
@@ -296,7 +297,7 @@ auto set_binary_input_output()
 	}
 }
 
-auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* image_buffer, const channel_t& channel)
+auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* source, unsigned char* target, const channel_t& channel)
 -> void {
 	auto origin = cl::size_t<3>();
 	origin[0] = 0;
@@ -311,7 +312,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	OPENCL_CHECK_STATUS();
 	status = filter_kernel.setArg(1, channel.source);
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueWriteImage(channel.source, CL_TRUE, origin, region, 0, 0, image_buffer);
+	status = queue.enqueueWriteImage(channel.source, CL_TRUE, origin, region, 0, 0, source);
 	OPENCL_CHECK_STATUS();
 	auto zero = 0.0f;
 	queue.enqueueFillBuffer(channel.buffer, &zero, 0, (channel.w * channel.h * sizeof(float)));
@@ -330,7 +331,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 			OPENCL_CHECK_STATUS();
 		}
 	}
-	status = normalize_kernel.setArg(0, channel.source);
+	status = normalize_kernel.setArg(0, channel.target);
 	OPENCL_CHECK_STATUS();
 	status = normalize_kernel.setArg(1, channel.buffer);
 	OPENCL_CHECK_STATUS();
@@ -340,7 +341,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	auto global_h = compute_global_size_ceil(channel.h, local_h);
 	status = queue.enqueueNDRangeKernel(normalize_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueReadImage(channel.source, CL_TRUE, origin, region, 0, 0, image_buffer);
+	status = queue.enqueueReadImage(channel.target, CL_TRUE, origin, region, 0, 0, target);
 	OPENCL_CHECK_STATUS();
 	status = queue.finish();
 	OPENCL_CHECK_STATUS();
@@ -398,14 +399,21 @@ auto main(int argc, char** argv)
 			auto source = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
 			OPENCL_CHECK_STATUS();
 			channel.source = source;
+			auto target = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
+			OPENCL_CHECK_STATUS();
+			channel.target = target;
 			bytes_per_frame += (channel.w * channel.h);
 		}
 		if (arg_format.two_bytes_per_pixel) {
 			bytes_per_frame *= 2;
 		}
 		auto frame_buffer_capacity = 2;
-		auto frame_buffer = (unsigned char*)malloc(frame_buffer_capacity * bytes_per_frame);
-		if (frame_buffer == nullptr) {
+		auto source_frame_buffer = (unsigned char*)malloc(frame_buffer_capacity * bytes_per_frame);
+		if (source_frame_buffer == nullptr) {
+			throw EXIT_FAILURE;
+		}
+		auto target_frame_buffer = (unsigned char*)malloc(frame_buffer_capacity * bytes_per_frame);
+		if (target_frame_buffer == nullptr) {
 			throw EXIT_FAILURE;
 		}
 		auto frames_read = 0;
@@ -414,7 +422,7 @@ auto main(int argc, char** argv)
 		while (!feof(stdin)) {
 			for (auto i = frames_read; i < frames_written + frame_buffer_capacity; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto new_frames_read = fread(frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdin);
+				auto new_frames_read = fread(source_frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdin);
 				if (new_frames_read == 0) {
 					break;
 				}
@@ -430,7 +438,8 @@ auto main(int argc, char** argv)
 							queue,
 							filter_kernel,
 							normalize_kernel,
-							&frame_buffer[frame_buffer_offset],
+							&source_frame_buffer[frame_buffer_offset],
+							&target_frame_buffer[frame_buffer_offset],
 							channel
 						);
 						auto pixels_in_channel = (channel.w * channel.h);
@@ -446,7 +455,7 @@ auto main(int argc, char** argv)
 			}
 			for (auto i = frames_written; i < frames_filtered; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto new_frames_written = fwrite(frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdout);
+				auto new_frames_written = fwrite(target_frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdout);
 				if (new_frames_written == 0) {
 					break;
 				}
@@ -456,8 +465,10 @@ auto main(int argc, char** argv)
 		fprintf(stderr, "A total of %i frames were read.\n", frames_read);
 		fprintf(stderr, "A total of %i frames were filtered.\n", frames_filtered);
 		fprintf(stderr, "A total of %i frames were written.\n", frames_written);
-		free(frame_buffer);
-		frame_buffer = nullptr;
+		free(source_frame_buffer);
+		source_frame_buffer = nullptr;
+		free(target_frame_buffer);
+		target_frame_buffer = nullptr;
 		fprintf(stderr, "Program completed successfully.\n");
 		return EXIT_SUCCESS;
 	} catch (...) {
