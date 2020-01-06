@@ -154,9 +154,39 @@ void copy_to_block(__local float* block, int x, int y, float s) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void scale_block(__local float* block, int x, int y, float f) {
+void block_add(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
-	block[offset] *= f;
+	target[offset] = lhs[offset] + rhs[offset];
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
+void block_addf(__local float* target, __local float* lhs, float rhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = lhs[offset] + rhs;
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
+void block_sub(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = lhs[offset] - rhs[offset];
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
+void block_subf(__local float* target, __local float* lhs, float rhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = lhs[offset] - rhs;
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
+void block_mul(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = lhs[offset] * rhs[offset];
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
+void block_mulf(__local float* target, __local float* lhs, float rhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = lhs[offset] * rhs;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
@@ -236,7 +266,7 @@ dct_transform(__write_only image2d_t target, __read_only image2d_t source) {
 	copy_to_block(block, lid.x, lid.y, s);
 	convert_to_relative_range(block, lid.x, lid.y);
 	compute_dct_xy(block, lid.x, lid.y);
-	scale_block(block, lid.x, lid.y, 1.0f / (float)(BLOCK_SIZE * BLOCK_SIZE));
+	block_mulf(block, block, 1.0f / (float)(BLOCK_SIZE * BLOCK_SIZE), lid.x, lid.y);
 	convert_to_absolute_range(block, lid.x, lid.y);
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
 	write_imagef(target, gid, (float4)(t));
@@ -265,7 +295,7 @@ idct_transform(__write_only image2d_t target, __read_only image2d_t source) {
 	copy_to_block(block, lid.x, lid.y, s);
 	convert_to_relative_range(block, lid.x, lid.y);
 	compute_idct_xy(block, lid.x, lid.y);
-	scale_block(block, lid.x, lid.y, 1.0f * (float)(BLOCK_SIZE * BLOCK_SIZE));
+	block_mulf(block, block, 1.0f * (float)(BLOCK_SIZE * BLOCK_SIZE), lid.x, lid.y);
 	convert_to_absolute_range(block, lid.x, lid.y);
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
 	write_imagef(target, gid, (float4)(t));
