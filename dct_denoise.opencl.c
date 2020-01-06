@@ -300,3 +300,43 @@ idct_transform(__write_only image2d_t target, __read_only image2d_t source) {
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
 	write_imagef(target, gid, (float4)(t));
 }
+
+__kernel void
+lowpass_x_kernel(__write_only image2d_t target, __read_only image2d_t source) {
+	int2 gid = { get_global_id(0), get_global_id(1) };
+	int2 ss = { get_image_width(source), get_image_height(source) };
+	if (gid.x >= ss.x) {
+		return;
+	}
+	if (gid.y >= ss.y) {
+		return;
+	}
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+	float s0 = read_imagef(source, sampler, (int2){ gid.x - 2, gid.y}).s0;
+	float s1 = read_imagef(source, sampler, (int2){ gid.x - 1, gid.y}).s0;
+	float s2 = read_imagef(source, sampler, (int2){ gid.x + 0, gid.y}).s0;
+	float s3 = read_imagef(source, sampler, (int2){ gid.x + 1, gid.y}).s0;
+	float s4 = read_imagef(source, sampler, (int2){ gid.x + 2, gid.y}).s0;
+	float t = (s0 + s1 + s2 + s3 + s4) / 5.0f;
+	write_imagef(target, gid, (float4)(t));
+}
+
+__kernel void
+lowpass_y_kernel(__write_only image2d_t target, __read_only image2d_t source) {
+	int2 gid = { get_global_id(0), get_global_id(1) };
+	int2 ss = { get_image_width(source), get_image_height(source) };
+	if (gid.x >= ss.x) {
+		return;
+	}
+	if (gid.y >= ss.y) {
+		return;
+	}
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+	float s0 = read_imagef(source, sampler, (int2){ gid.x, gid.y - 2}).s0;
+	float s1 = read_imagef(source, sampler, (int2){ gid.x, gid.y - 1}).s0;
+	float s2 = read_imagef(source, sampler, (int2){ gid.x, gid.y + 0}).s0;
+	float s3 = read_imagef(source, sampler, (int2){ gid.x, gid.y + 1}).s0;
+	float s4 = read_imagef(source, sampler, (int2){ gid.x, gid.y + 2}).s0;
+	float t = (s0 + s1 + s2 + s3 + s4) / 5.0f;
+	write_imagef(target, gid, (float4)(t));
+}
