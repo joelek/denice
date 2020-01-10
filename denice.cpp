@@ -450,7 +450,6 @@ auto main(int argc, char** argv)
 					}
 					// TODO: Swap byte order if platform and format endianess differ.
 				}
-				usleep(1000);
 				frames_filtered += 1;
 			}
 			for (auto i = frames_written; i < frames_filtered; i++) {
@@ -461,6 +460,7 @@ auto main(int argc, char** argv)
 				}
 				frames_written += new_frames_written;
 			}
+			usleep(1000);
 		}
 		fprintf(stderr, "A total of %i frames were read.\n", frames_read);
 		fprintf(stderr, "A total of %i frames were filtered.\n", frames_filtered);
