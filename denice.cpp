@@ -419,7 +419,7 @@ auto main(int argc, char** argv)
 		auto frames_read = 0;
 		auto frames_filtered = 0;
 		auto frames_written = 0;
-		while (!feof(stdin)) {
+		while (!feof(stdin) || (frames_written < frames_read)) {
 			for (auto i = frames_read; i < frames_written + frame_buffer_capacity; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto new_frames_read = fread(source_frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdin);
