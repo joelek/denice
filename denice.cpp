@@ -429,9 +429,9 @@ auto main(int argc, char** argv)
 				frames_read += new_frames_read;
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
+				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
+				auto frame_buffer_offset = (frame_slot * bytes_per_frame);
 				if (arg_strength > 0.0) {
-					auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-					auto frame_buffer_offset = (frame_slot * bytes_per_frame);
 					// TODO: Swap byte order if platform and format endianess differ.
 					for (auto& channel : arg_format.channels) {
 						filter(
@@ -449,6 +449,8 @@ auto main(int argc, char** argv)
 						frame_buffer_offset += pixels_in_channel;
 					}
 					// TODO: Swap byte order if platform and format endianess differ.
+				} else {
+					memcpy(&target_frame_buffer[frame_buffer_offset], &source_frame_buffer[frame_buffer_offset], bytes_per_frame);
 				}
 				frames_filtered += 1;
 			}
