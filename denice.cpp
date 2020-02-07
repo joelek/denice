@@ -301,7 +301,7 @@ auto set_binary_input_output()
 	}
 }
 
-auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* buffer, const data_channel_t& data_channel)
+auto copy_channel_to_device(const cl::CommandQueue& queue, const data_channel_t& data_channel, unsigned char* buffer)
 -> void {
 	auto origin = cl::size_t<3>();
 	origin[0] = 0;
@@ -312,12 +312,33 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	region[1] = data_channel.channel.h;
 	region[2] = 1;
 	auto status = CL_SUCCESS;
+	status = queue.enqueueWriteImage(data_channel.source, CL_TRUE, origin, region, 0, 0, buffer);
+	OPENCL_CHECK_STATUS();
+}
+
+auto copy_channel_to_host(const cl::CommandQueue& queue, const data_channel_t& data_channel, unsigned char* buffer)
+-> void {
+	auto origin = cl::size_t<3>();
+	origin[0] = 0;
+	origin[1] = 0;
+	origin[2] = 0;
+	auto region = cl::size_t<3>();
+	region[0] = data_channel.channel.w;
+	region[1] = data_channel.channel.h;
+	region[2] = 1;
+	auto status = CL_SUCCESS;
+	status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, buffer);
+	OPENCL_CHECK_STATUS();
+}
+
+auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* buffer, const data_channel_t& data_channel)
+-> void {
+	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
 	status = filter_kernel.setArg(1, data_channel.source);
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueWriteImage(data_channel.source, CL_TRUE, origin, region, 0, 0, buffer);
-	OPENCL_CHECK_STATUS();
+	copy_channel_to_device(queue, data_channel, buffer);
 	auto zero = 0.0f;
 	queue.enqueueFillBuffer(data_channel.buffer, &zero, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
@@ -345,8 +366,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	auto global_h = compute_global_size_ceil(data_channel.channel.h, local_h);
 	status = queue.enqueueNDRangeKernel(normalize_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, buffer);
-	OPENCL_CHECK_STATUS();
+	copy_channel_to_host(queue, data_channel, buffer);
 	status = queue.finish();
 	OPENCL_CHECK_STATUS();
 }
