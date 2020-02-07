@@ -52,9 +52,6 @@ auto compute_global_size_floor(unsigned int data_size, unsigned int local_size)
 }
 
 struct channel_t {
-	cl::Buffer buffer;
-	cl::Image2D source;
-	cl::Image2D target;
 	int w;
 	int h;
 };
@@ -62,6 +59,13 @@ struct channel_t {
 struct format_t {
 	std::vector<channel_t> channels;
 	bool two_bytes_per_pixel;
+};
+
+struct data_channel_t {
+	channel_t& channel;
+	cl::Buffer buffer;
+	cl::Image2D source;
+	cl::Image2D target;
 };
 
 auto parse_format(const char* raw_format, int arg_width, int arg_height)
@@ -81,9 +85,9 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 		auto hw = (fw >> 1);
 		auto hh = (fh >> 1);
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ cl::Buffer(), cl::Image2D(), cl::Image2D(), fw, fh });
-		channels.push_back({ cl::Buffer(), cl::Image2D(), cl::Image2D(), hw, hh });
-		channels.push_back({ cl::Buffer(), cl::Image2D(), cl::Image2D(), hw, hh });
+		channels.push_back({ fw, fh });
+		channels.push_back({ hw, hh });
+		channels.push_back({ hw, hh });
 		return { channels, true };
 	}
 	fprintf(stderr, "Unsupported frame format!\n");
@@ -297,25 +301,25 @@ auto set_binary_input_output()
 	}
 }
 
-auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* source, unsigned char* target, const channel_t& channel)
+auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* source, unsigned char* target, const data_channel_t& data_channel)
 -> void {
 	auto origin = cl::size_t<3>();
 	origin[0] = 0;
 	origin[1] = 0;
 	origin[2] = 0;
 	auto region = cl::size_t<3>();
-	region[0] = channel.w;
-	region[1] = channel.h;
+	region[0] = data_channel.channel.w;
+	region[1] = data_channel.channel.h;
 	region[2] = 1;
 	auto status = CL_SUCCESS;
-	status = filter_kernel.setArg(0, channel.buffer);
+	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(1, channel.source);
+	status = filter_kernel.setArg(1, data_channel.source);
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueWriteImage(channel.source, CL_TRUE, origin, region, 0, 0, source);
+	status = queue.enqueueWriteImage(data_channel.source, CL_TRUE, origin, region, 0, 0, source);
 	OPENCL_CHECK_STATUS();
 	auto zero = 0.0f;
-	queue.enqueueFillBuffer(channel.buffer, &zero, 0, (channel.w * channel.h * sizeof(float)));
+	queue.enqueueFillBuffer(data_channel.buffer, &zero, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
 		for (auto x = 0; x < BLOCK_SIZE; x++) {
@@ -325,23 +329,23 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 			OPENCL_CHECK_STATUS();
 			auto local_w = BLOCK_SIZE;
 			auto local_h = BLOCK_SIZE;
-			auto global_w = compute_global_size_floor((channel.w - x), local_w);
-			auto global_h = compute_global_size_floor((channel.h - y), local_h);
+			auto global_w = compute_global_size_floor((data_channel.channel.w - x), local_w);
+			auto global_h = compute_global_size_floor((data_channel.channel.h - y), local_h);
 			status = queue.enqueueNDRangeKernel(filter_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 			OPENCL_CHECK_STATUS();
 		}
 	}
-	status = normalize_kernel.setArg(0, channel.target);
+	status = normalize_kernel.setArg(0, data_channel.target);
 	OPENCL_CHECK_STATUS();
-	status = normalize_kernel.setArg(1, channel.buffer);
+	status = normalize_kernel.setArg(1, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
 	auto local_w = BLOCK_SIZE;
 	auto local_h = BLOCK_SIZE;
-	auto global_w = compute_global_size_ceil(channel.w, local_w);
-	auto global_h = compute_global_size_ceil(channel.h, local_h);
+	auto global_w = compute_global_size_ceil(data_channel.channel.w, local_w);
+	auto global_h = compute_global_size_ceil(data_channel.channel.h, local_h);
 	status = queue.enqueueNDRangeKernel(normalize_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueReadImage(channel.target, CL_TRUE, origin, region, 0, 0, target);
+	status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, target);
 	OPENCL_CHECK_STATUS();
 	status = queue.finish();
 	OPENCL_CHECK_STATUS();
@@ -391,18 +395,17 @@ auto main(int argc, char** argv)
 		if (arg_format.two_bytes_per_pixel) {
 			image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT16);
 		}
+		auto data_channels = std::vector<data_channel_t>();
 		auto bytes_per_frame = 0;
 		for (auto& channel : arg_format.channels) {
 			auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
 			OPENCL_CHECK_STATUS();
-			channel.buffer = buffer;
 			auto source = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
 			OPENCL_CHECK_STATUS();
-			channel.source = source;
 			auto target = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
 			OPENCL_CHECK_STATUS();
-			channel.target = target;
 			bytes_per_frame += (channel.w * channel.h);
+			data_channels.push_back({ channel, buffer, source, target });
 		}
 		if (arg_format.two_bytes_per_pixel) {
 			bytes_per_frame *= 2;
@@ -433,16 +436,16 @@ auto main(int argc, char** argv)
 				auto frame_buffer_offset = (frame_slot * bytes_per_frame);
 				if (arg_strength > 0.0) {
 					// TODO: Swap byte order if platform and format endianess differ.
-					for (auto& channel : arg_format.channels) {
+					for (auto& data_channel : data_channels) {
 						filter(
 							queue,
 							filter_kernel,
 							normalize_kernel,
 							&source_frame_buffer[frame_buffer_offset],
 							&target_frame_buffer[frame_buffer_offset],
-							channel
+							data_channel
 						);
-						auto pixels_in_channel = (channel.w * channel.h);
+						auto pixels_in_channel = (data_channel.channel.w * data_channel.channel.h);
 						if (arg_format.two_bytes_per_pixel) {
 							pixels_in_channel *= 2;
 						}
