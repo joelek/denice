@@ -68,6 +68,11 @@ struct data_channel_t {
 	cl::Image2D target;
 };
 
+struct frame_t {
+	std::vector<data_channel_t> data_channels;
+	std::vector<unsigned char> buffer;
+};
+
 auto parse_format(const char* raw_format, int arg_width, int arg_height)
 -> format_t {
 	if (false) {
@@ -331,7 +336,7 @@ auto copy_channel_to_host(const cl::CommandQueue& queue, const data_channel_t& d
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* buffer, const data_channel_t& data_channel)
+auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* buffer, const data_channel_t& data_channel)
 -> void {
 	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
@@ -371,16 +376,30 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	OPENCL_CHECK_STATUS();
 }
 
+auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame, bool two_bytes_per_pixel)
+-> void {
+	auto frame_buffer_offset = 0;
+	for (auto& data_channel : frame.data_channels) {
+		filter_channel(
+			queue,
+			filter_kernel,
+			normalize_kernel,
+			&frame.buffer.data()[frame_buffer_offset],
+			data_channel
+		);
+		auto pixels_in_channel = (data_channel.channel.w * data_channel.channel.h);
+		if (two_bytes_per_pixel) {
+			pixels_in_channel *= 2;
+		}
+		frame_buffer_offset += pixels_in_channel;
+	}
+}
+
 auto is_system_little_endian()
 -> bool {
 	auto value = "\0\1\0\0\0\0\0\0";
 	return *(unsigned int*)(value) == 256;
 }
-
-struct frame_t {
-	std::vector<data_channel_t> data_channels;
-	std::vector<unsigned char> buffer;
-};
 
 auto main(int argc, char** argv)
 -> int {
@@ -457,24 +476,8 @@ auto main(int argc, char** argv)
 			for (auto i = frames_filtered; i < frames_read; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto& frame = frames.at(frame_slot);
-				auto frame_buffer_offset = 0;
 				if (arg_strength > 0.0) {
-					// TODO: Swap byte order if platform and format endianess differ.
-					for (auto& data_channel : frame.data_channels) {
-						filter(
-							queue,
-							filter_kernel,
-							normalize_kernel,
-							&frame.buffer.data()[frame_buffer_offset],
-							data_channel
-						);
-						auto pixels_in_channel = (data_channel.channel.w * data_channel.channel.h);
-						if (arg_format.two_bytes_per_pixel) {
-							pixels_in_channel *= 2;
-						}
-						frame_buffer_offset += pixels_in_channel;
-					}
-					// TODO: Swap byte order if platform and format endianess differ.
+					filter_frame(queue, filter_kernel, normalize_kernel, frame, arg_format.two_bytes_per_pixel);
 				}
 				frames_filtered += 1;
 			}
