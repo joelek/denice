@@ -483,8 +483,7 @@ auto main(int argc, char** argv)
 		auto frames_written = 0;
 		while (!feof(stdin) || (frames_written < frames_read)) {
 			for (auto i = frames_read; i < frames_written + frame_buffer_capacity; i++) {
-				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto& frame = frames.at(frame_slot);
+				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto new_frames_read = fread(frame.buffer.data(), frame.buffer.size(), 1, stdin);
 				if (new_frames_read == 0) {
 					break;
@@ -495,8 +494,10 @@ auto main(int argc, char** argv)
 				frames_read += new_frames_read;
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
-				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto& frame = frames.at(frame_slot);
+				if (!feof(stdin) && (i == frames_read - 1)) {
+					break;
+				}
+				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				if (arg_strength > 0.0) {
 					filter_frame(queue, filter_kernel, normalize_kernel, frame);
 					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel);
@@ -504,8 +505,7 @@ auto main(int argc, char** argv)
 				frames_filtered += 1;
 			}
 			for (auto i = frames_written; i < frames_filtered; i++) {
-				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto& frame = frames.at(frame_slot);
+				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto new_frames_written = fwrite(frame.buffer.data(), frame.buffer.size(), 1, stdout);
 				if (new_frames_written == 0) {
 					break;
