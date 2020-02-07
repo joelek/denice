@@ -489,13 +489,15 @@ auto main(int argc, char** argv)
 				if (new_frames_read == 0) {
 					break;
 				}
+				if (arg_strength > 0.0) {
+					copy_frame_to_device(queue, frame, arg_format.two_bytes_per_pixel);
+				}
 				frames_read += new_frames_read;
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
 				auto& frame = frames.at(frame_slot);
 				if (arg_strength > 0.0) {
-					copy_frame_to_device(queue, frame, arg_format.two_bytes_per_pixel);
 					filter_frame(queue, filter_kernel, normalize_kernel, frame);
 					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel);
 				}
