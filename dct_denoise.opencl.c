@@ -154,6 +154,34 @@ void copy_to_block(__local float* block, int x, int y, float s) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
+float block_avg(__local float* block) {
+	float sum = 0.0f;
+	for (int i = 0; i < (BLOCK_SIZE * BLOCK_SIZE); i++) {
+		sum += block[i];
+	}
+	sum /= (BLOCK_SIZE * BLOCK_SIZE);
+	barrier(CLK_LOCAL_MEM_FENCE);
+	return sum;
+}
+
+float block_mse(__local float* block) {
+	float avg = block_avg(block);
+	float sum = 0.0f;
+	for (int i = 0; i < (BLOCK_SIZE * BLOCK_SIZE); i++) {
+		float x = (block[i] - avg);
+		sum += (x * x);
+	}
+	sum /= (BLOCK_SIZE * BLOCK_SIZE);
+	barrier(CLK_LOCAL_MEM_FENCE);
+	return sum;
+}
+
+void block_abs(__local float* target, __local float* lhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = fabs(lhs[offset]);
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
 void block_add(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	target[offset] = lhs[offset] + rhs[offset];
