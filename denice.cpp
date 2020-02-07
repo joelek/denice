@@ -357,6 +357,10 @@ auto is_system_little_endian()
 	return *(unsigned int*)(value) == 256;
 }
 
+struct frame_t {
+	std::vector<data_channel_t> data_channels;
+};
+
 auto main(int argc, char** argv)
 -> int {
 	try {
@@ -391,26 +395,31 @@ auto main(int argc, char** argv)
 		status = filter_kernel.setArg(4, arg_strength);
 		OPENCL_CHECK_STATUS();
 		auto normalize_kernel = get_opencl_kernel(program, "normalize_kernel");
+		auto frame_buffer_capacity = 2;
 		auto image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT8);
 		if (arg_format.two_bytes_per_pixel) {
 			image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT16);
 		}
-		auto data_channels = std::vector<data_channel_t>();
 		auto bytes_per_frame = 0;
-		for (auto& channel : arg_format.channels) {
-			auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
-			OPENCL_CHECK_STATUS();
-			auto source = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
-			OPENCL_CHECK_STATUS();
-			auto target = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
-			OPENCL_CHECK_STATUS();
-			bytes_per_frame += (channel.w * channel.h);
-			data_channels.push_back({ channel, buffer, source, target });
+		auto frames = std::vector<frame_t>();
+		for (auto i = 0; i < frame_buffer_capacity; i++) {
+			auto data_channels = std::vector<data_channel_t>();
+			bytes_per_frame = 0;
+			for (auto& channel : arg_format.channels) {
+				auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
+				OPENCL_CHECK_STATUS();
+				auto source = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
+				OPENCL_CHECK_STATUS();
+				auto target = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
+				OPENCL_CHECK_STATUS();
+				bytes_per_frame += (channel.w * channel.h);
+				data_channels.push_back({ channel, buffer, source, target });
+			}
+			if (arg_format.two_bytes_per_pixel) {
+				bytes_per_frame *= 2;
+			}
+			frames.push_back({ data_channels });
 		}
-		if (arg_format.two_bytes_per_pixel) {
-			bytes_per_frame *= 2;
-		}
-		auto frame_buffer_capacity = 2;
 		auto source_frame_buffer = (unsigned char*)malloc(frame_buffer_capacity * bytes_per_frame);
 		if (source_frame_buffer == nullptr) {
 			throw EXIT_FAILURE;
@@ -433,10 +442,11 @@ auto main(int argc, char** argv)
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
+				auto frame = frames.at(frame_slot);
 				auto frame_buffer_offset = (frame_slot * bytes_per_frame);
 				if (arg_strength > 0.0) {
 					// TODO: Swap byte order if platform and format endianess differ.
-					for (auto& data_channel : data_channels) {
+					for (auto& data_channel : frame.data_channels) {
 						filter(
 							queue,
 							filter_kernel,
