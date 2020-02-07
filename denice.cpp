@@ -359,6 +359,7 @@ auto is_system_little_endian()
 
 struct frame_t {
 	std::vector<data_channel_t> data_channels;
+	std::vector<unsigned char> buffer;
 };
 
 auto main(int argc, char** argv)
@@ -400,11 +401,10 @@ auto main(int argc, char** argv)
 		if (arg_format.two_bytes_per_pixel) {
 			image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT16);
 		}
-		auto bytes_per_frame = 0;
 		auto frames = std::vector<frame_t>();
 		for (auto i = 0; i < frame_buffer_capacity; i++) {
 			auto data_channels = std::vector<data_channel_t>();
-			bytes_per_frame = 0;
+			auto bytes_per_frame = 0;
 			for (auto& channel : arg_format.channels) {
 				auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
 				OPENCL_CHECK_STATUS();
@@ -418,15 +418,8 @@ auto main(int argc, char** argv)
 			if (arg_format.two_bytes_per_pixel) {
 				bytes_per_frame *= 2;
 			}
-			frames.push_back({ data_channels });
-		}
-		auto source_frame_buffer = (unsigned char*)malloc(frame_buffer_capacity * bytes_per_frame);
-		if (source_frame_buffer == nullptr) {
-			throw EXIT_FAILURE;
-		}
-		auto target_frame_buffer = (unsigned char*)malloc(frame_buffer_capacity * bytes_per_frame);
-		if (target_frame_buffer == nullptr) {
-			throw EXIT_FAILURE;
+			auto buffer = std::vector<unsigned char>(bytes_per_frame);
+			frames.push_back({ data_channels, buffer });
 		}
 		auto frames_read = 0;
 		auto frames_filtered = 0;
@@ -434,7 +427,8 @@ auto main(int argc, char** argv)
 		while (!feof(stdin) || (frames_written < frames_read)) {
 			for (auto i = frames_read; i < frames_written + frame_buffer_capacity; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto new_frames_read = fread(source_frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdin);
+				auto& frame = frames.at(frame_slot);
+				auto new_frames_read = fread(frame.buffer.data(), frame.buffer.size(), 1, stdin);
 				if (new_frames_read == 0) {
 					break;
 				}
@@ -442,8 +436,8 @@ auto main(int argc, char** argv)
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto frame = frames.at(frame_slot);
-				auto frame_buffer_offset = (frame_slot * bytes_per_frame);
+				auto& frame = frames.at(frame_slot);
+				auto frame_buffer_offset = 0;
 				if (arg_strength > 0.0) {
 					// TODO: Swap byte order if platform and format endianess differ.
 					for (auto& data_channel : frame.data_channels) {
@@ -451,8 +445,8 @@ auto main(int argc, char** argv)
 							queue,
 							filter_kernel,
 							normalize_kernel,
-							&source_frame_buffer[frame_buffer_offset],
-							&target_frame_buffer[frame_buffer_offset],
+							&frame.buffer.data()[frame_buffer_offset],
+							&frame.buffer.data()[frame_buffer_offset],
 							data_channel
 						);
 						auto pixels_in_channel = (data_channel.channel.w * data_channel.channel.h);
@@ -462,14 +456,13 @@ auto main(int argc, char** argv)
 						frame_buffer_offset += pixels_in_channel;
 					}
 					// TODO: Swap byte order if platform and format endianess differ.
-				} else {
-					memcpy(&target_frame_buffer[frame_buffer_offset], &source_frame_buffer[frame_buffer_offset], bytes_per_frame);
 				}
 				frames_filtered += 1;
 			}
 			for (auto i = frames_written; i < frames_filtered; i++) {
 				auto frame_slot = compute_modulus(i, frame_buffer_capacity);
-				auto new_frames_written = fwrite(target_frame_buffer + (frame_slot * bytes_per_frame), bytes_per_frame, 1, stdout);
+				auto& frame = frames.at(frame_slot);
+				auto new_frames_written = fwrite(frame.buffer.data(), frame.buffer.size(), 1, stdout);
 				if (new_frames_written == 0) {
 					break;
 				}
@@ -480,10 +473,6 @@ auto main(int argc, char** argv)
 		fprintf(stderr, "A total of %i frames were read.\n", frames_read);
 		fprintf(stderr, "A total of %i frames were filtered.\n", frames_filtered);
 		fprintf(stderr, "A total of %i frames were written.\n", frames_written);
-		free(source_frame_buffer);
-		source_frame_buffer = nullptr;
-		free(target_frame_buffer);
-		target_frame_buffer = nullptr;
 		fprintf(stderr, "Program completed successfully.\n");
 		return EXIT_SUCCESS;
 	} catch (...) {
