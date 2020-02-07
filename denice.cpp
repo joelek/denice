@@ -301,7 +301,7 @@ auto set_binary_input_output()
 	}
 }
 
-auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* source, unsigned char* target, const data_channel_t& data_channel)
+auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, unsigned char* buffer, const data_channel_t& data_channel)
 -> void {
 	auto origin = cl::size_t<3>();
 	origin[0] = 0;
@@ -316,7 +316,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	OPENCL_CHECK_STATUS();
 	status = filter_kernel.setArg(1, data_channel.source);
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueWriteImage(data_channel.source, CL_TRUE, origin, region, 0, 0, source);
+	status = queue.enqueueWriteImage(data_channel.source, CL_TRUE, origin, region, 0, 0, buffer);
 	OPENCL_CHECK_STATUS();
 	auto zero = 0.0f;
 	queue.enqueueFillBuffer(data_channel.buffer, &zero, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
@@ -345,7 +345,7 @@ auto filter(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel
 	auto global_h = compute_global_size_ceil(data_channel.channel.h, local_h);
 	status = queue.enqueueNDRangeKernel(normalize_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 	OPENCL_CHECK_STATUS();
-	status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, target);
+	status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, buffer);
 	OPENCL_CHECK_STATUS();
 	status = queue.finish();
 	OPENCL_CHECK_STATUS();
@@ -445,7 +445,6 @@ auto main(int argc, char** argv)
 							queue,
 							filter_kernel,
 							normalize_kernel,
-							&frame.buffer.data()[frame_buffer_offset],
 							&frame.buffer.data()[frame_buffer_offset],
 							data_channel
 						);
