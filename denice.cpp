@@ -453,7 +453,7 @@ auto main(int argc, char** argv)
 		status = filter_kernel.setArg(4, arg_strength);
 		OPENCL_CHECK_STATUS();
 		auto normalize_kernel = get_opencl_kernel(program, "normalize_kernel");
-		auto frame_buffer_capacity = 2;
+		auto frame_buffer_capacity = 3;
 		auto image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT8);
 		if (arg_format.two_bytes_per_pixel) {
 			image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT16);
@@ -494,7 +494,7 @@ auto main(int argc, char** argv)
 				frames_read += new_frames_read;
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
-				if (!feof(stdin) && (i == frames_read - 1)) {
+				if (!feof(stdin) && (i >= frames_read - frame_buffer_capacity + 1)) {
 					break;
 				}
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
