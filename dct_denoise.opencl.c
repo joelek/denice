@@ -69,14 +69,15 @@ __constant float dct_coefficients[64] = {
 };
 
 int get_scaling_factor(int coordinate, int size) {
+	int shift = 1;
 	if (coordinate < 0) {
 		return 1;
-	} else if (coordinate < BLOCK_SIZE) {
-		return coordinate + 1;
+	} else if (coordinate < BLOCK_SIZE - 1) {
+		return (coordinate >> shift) + 1;
 	} else if (coordinate <= size - BLOCK_SIZE) {
-		return BLOCK_SIZE;
+		return (BLOCK_SIZE >> shift);
 	} else if (coordinate < size) {
-		return size - coordinate;
+		return ((size - 1 - coordinate) >> shift) + 1;
 	} else {
 		return 1;
 	}
@@ -154,11 +155,17 @@ void copy_to_block(__local float* block, int x, int y, float s) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-float block_avg(__local float* block) {
+float block_sum(__local float* block) {
 	float sum = 0.0f;
 	for (int i = 0; i < (BLOCK_SIZE * BLOCK_SIZE); i++) {
 		sum += block[i];
 	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+	return sum;
+}
+
+float block_avg(__local float* block) {
+	float sum = block_sum(block);
 	sum /= (BLOCK_SIZE * BLOCK_SIZE);
 	barrier(CLK_LOCAL_MEM_FENCE);
 	return sum;
@@ -194,6 +201,12 @@ void block_addf(__local float* target, __local float* lhs, float rhs, int x, int
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
+void block_copy(__local float* target, __local float* source, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = source[offset];
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
 void block_sub(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	target[offset] = lhs[offset] - rhs[offset];
@@ -218,10 +231,10 @@ void block_mulf(__local float* target, __local float* lhs, float rhs, int x, int
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void filter_block(__local float* block, int x, int y, float threshold) {
+void filter_block(__local float* block, int x, int y, float thresholdp, float thresholdc, float thresholdn, float threshold2, float norm) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	float s = block[offset];
-	if (fabs(s) < threshold) {
+	if (fabs(s) * norm < thresholdp + thresholdn + thresholdc) {
 		block[offset] = 0.0f;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -229,10 +242,10 @@ void filter_block(__local float* block, int x, int y, float threshold) {
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
-filter_kernel(__global float* buffer, __read_only image2d_t source, int x, int y, float threshold) {
+filter_kernel(__global float* buffer, __read_only image2d_t sourcep, __read_only image2d_t sourcec, __read_only image2d_t sourcen, int x, int y) {
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
-	int2 ss = { get_image_width(source), get_image_height(source) };
+	int2 ss = { get_image_width(sourcec), get_image_height(sourcec) };
 	int2 coords = { gid.x + x, gid.y + y };
 	if (coords.x >= ss.x) {
 		return;
@@ -241,11 +254,56 @@ filter_kernel(__global float* buffer, __read_only image2d_t source, int x, int y
 		return;
 	}
 	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
-	float s = read_imagef(source, sampler, coords).s0;
+	__local float blockp[BLOCK_SIZE * BLOCK_SIZE];
+	copy_to_block(blockp, lid.x, lid.y, read_imagef(sourcep, sampler, coords).s0);
+	__local float blockc[BLOCK_SIZE * BLOCK_SIZE];
+	copy_to_block(blockc, lid.x, lid.y, read_imagef(sourcec, sampler, coords).s0);
+	__local float blockn[BLOCK_SIZE * BLOCK_SIZE];
+	copy_to_block(blockn, lid.x, lid.y, read_imagef(sourcen, sampler, coords).s0);
+
+	int index = (lid.y << BLOCK_SIZE_LOG2) + lid.x;
+	__local float weights[BLOCK_SIZE * BLOCK_SIZE];
+	float weight = lid.x + lid.y;
+	copy_to_block(weights, lid.x, lid.y, weight);
+
+	__local float diffp[BLOCK_SIZE * BLOCK_SIZE];
+	block_sub(diffp, blockc, blockp, lid.x, lid.y);
+	block_abs(diffp, diffp, lid.x, lid.y);
+	compute_dct_xy(diffp, lid.x, lid.y);
+	block_mul(diffp, diffp, weights, lid.x, lid.y);
+	block_abs(diffp, diffp, lid.x, lid.y);
+
+	__local float diffn[BLOCK_SIZE * BLOCK_SIZE];
+	block_sub(diffn, blockc, blockn, lid.x, lid.y);
+	block_abs(diffn, diffn, lid.x, lid.y);
+	compute_dct_xy(diffn, lid.x, lid.y);
+	block_mul(diffn, diffn, weights, lid.x, lid.y);
+	block_abs(diffn, diffn, lid.x, lid.y);
+
+	__local float diff2[BLOCK_SIZE * BLOCK_SIZE];
+	block_sub(diff2, blockp, blockn, lid.x, lid.y);
+	block_abs(diff2, diff2, lid.x, lid.y);
+	compute_dct_xy(diff2, lid.x, lid.y);
+	block_mul(diff2, diff2, weights, lid.x, lid.y);
+	block_abs(diff2, diff2, lid.x, lid.y);
+
+
+	compute_dct_xy(blockc, lid.x, lid.y);
+
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
-	copy_to_block(block, lid.x, lid.y, s);
-	compute_dct_xy(block, lid.x, lid.y);
-	filter_block(block, lid.x, lid.y, threshold);
+	block_copy(block, blockc, lid.x, lid.y);
+
+
+	block_mul(blockc, blockc, weights, lid.x, lid.y);
+	block_abs(blockc, blockc, lid.x, lid.y);
+
+	float thresholdp = block_sum(diffp);
+	float thresholdc = block_sum(blockc);
+	float thresholdn = block_sum(diffn);
+	float threshold2 = block_sum(diff2);
+	float norm = block_sum(weights);
+
+	filter_block(block, lid.x, lid.y, thresholdp, thresholdc, thresholdn, threshold2, norm);
 	compute_idct_xy(block, lid.x, lid.y);
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
 	buffer[(coords.y * ss.x) + coords.x] += t;
@@ -269,6 +327,23 @@ normalize_kernel(__write_only image2d_t target, __global float* buffer) {
 	int yf = get_scaling_factor(coords.y, ts.y);
 	float t = s / (float)(xf * yf);
 	write_imagef(target, coords, (float4)(t));
+}
+
+__kernel void
+difference_kernel(__write_only image2d_t target, __read_only image2d_t one, __read_only image2d_t two) {
+	int2 gid = { get_global_id(0), get_global_id(1) };
+	int2 ss = { get_image_width(target), get_image_height(target) };
+	if (gid.x >= ss.x) {
+		return;
+	}
+	if (gid.y >= ss.y) {
+		return;
+	}
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+	float s0 = read_imagef(one, sampler, (int2){ gid.x - 2, gid.y}).s0;
+	float s1 = read_imagef(two, sampler, (int2){ gid.x - 2, gid.y}).s0;
+	float t = fabs(s0 - s1);
+	write_imagef(target, gid, (float4)(t));
 }
 
 __kernel void
