@@ -368,15 +368,38 @@ auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel)
+auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel, const data_channel_t& last_data_channel, const data_channel_t& next_data_channel)
 -> void {
 	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(1, data_channel.source);
-	OPENCL_CHECK_STATUS();
 	auto zero = 0.0f;
 	queue.enqueueFillBuffer(data_channel.buffer, &zero, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
+	OPENCL_CHECK_STATUS();
+
+	status = filter_kernel.setArg(1, last_data_channel.source);
+	OPENCL_CHECK_STATUS();
+	status = filter_kernel.setArg(5, 0.10f);
+	OPENCL_CHECK_STATUS();
+	for (auto y = 0; y < BLOCK_SIZE; y++) {
+		for (auto x = 0; x < BLOCK_SIZE; x++) {
+			status = filter_kernel.setArg(2, x);
+			OPENCL_CHECK_STATUS();
+			status = filter_kernel.setArg(3, y);
+			OPENCL_CHECK_STATUS();
+			auto local_w = BLOCK_SIZE;
+			auto local_h = BLOCK_SIZE;
+			auto global_w = compute_global_size_floor((last_data_channel.channel.w - x), local_w);
+			auto global_h = compute_global_size_floor((last_data_channel.channel.h - y), local_h);
+			status = queue.enqueueNDRangeKernel(filter_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
+			OPENCL_CHECK_STATUS();
+		}
+	}
+
+
+	status = filter_kernel.setArg(1, data_channel.source);
+	OPENCL_CHECK_STATUS();
+	status = filter_kernel.setArg(5, 1.00f);
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
 		for (auto x = 0; x < BLOCK_SIZE; x++) {
@@ -392,6 +415,27 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 			OPENCL_CHECK_STATUS();
 		}
 	}
+
+
+	status = filter_kernel.setArg(1, next_data_channel.source);
+	OPENCL_CHECK_STATUS();
+	status = filter_kernel.setArg(5, 0.10f);
+	OPENCL_CHECK_STATUS();
+	for (auto y = 0; y < BLOCK_SIZE; y++) {
+		for (auto x = 0; x < BLOCK_SIZE; x++) {
+			status = filter_kernel.setArg(2, x);
+			OPENCL_CHECK_STATUS();
+			status = filter_kernel.setArg(3, y);
+			OPENCL_CHECK_STATUS();
+			auto local_w = BLOCK_SIZE;
+			auto local_h = BLOCK_SIZE;
+			auto global_w = compute_global_size_floor((next_data_channel.channel.w - x), local_w);
+			auto global_h = compute_global_size_floor((next_data_channel.channel.h - y), local_h);
+			status = queue.enqueueNDRangeKernel(filter_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
+			OPENCL_CHECK_STATUS();
+		}
+	}
+
 	status = normalize_kernel.setArg(0, data_channel.target);
 	OPENCL_CHECK_STATUS();
 	status = normalize_kernel.setArg(1, data_channel.buffer);
@@ -406,10 +450,13 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame)
+auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame, frame_t& last_frame, frame_t& next_frame)
 -> void {
-	for (auto& data_channel : frame.data_channels) {
-		filter_channel(queue, filter_kernel, normalize_kernel, data_channel);
+	for (auto i = 0; i < (int)frame.data_channels.size(); i++) {
+		auto& data_channel = frame.data_channels.at(i);
+		auto& last_data_channel = last_frame.data_channels.at(i);
+		auto& next_data_channel = next_frame.data_channels.at(i);
+		filter_channel(queue, filter_kernel, normalize_kernel, data_channel, last_data_channel, next_data_channel);
 	}
 }
 
@@ -498,8 +545,10 @@ auto main(int argc, char** argv)
 					break;
 				}
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
+				auto& last_frame = frames.at(compute_modulus(i - 1, frame_buffer_capacity));
+				auto& next_frame = frames.at(compute_modulus(i + 1, frame_buffer_capacity));
 				if (arg_strength > 0.0) {
-					filter_frame(queue, filter_kernel, normalize_kernel, frame);
+					filter_frame(queue, filter_kernel, normalize_kernel, frame, last_frame, next_frame);
 					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel);
 				}
 				frames_filtered += 1;
