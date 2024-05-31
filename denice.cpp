@@ -78,11 +78,11 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 	if (false) {
 	} else if (strcmp(raw_format, "yuv420p16le") == 0) {
 		if ((arg_width & 1) == 1) {
-			fprintf(stderr, "Frame format requires an even frame width!\n");
+			fprintf(stderr, "Frame format \"yuv420p16le\" requires an even frame width!\n");
 			throw EXIT_FAILURE;
 		}
 		if ((arg_height & 1) == 1) {
-			fprintf(stderr, "Frame format requires an even frame height!\n");
+			fprintf(stderr, "Frame format \"yuv420p16le\" requires an even frame height!\n");
 			throw EXIT_FAILURE;
 		}
 		auto fw = arg_width;
