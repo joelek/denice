@@ -94,6 +94,19 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 		channels.push_back({ hw, hh });
 		channels.push_back({ hw, hh });
 		return { channels, true };
+	} else if (strcmp(raw_format, "yuv422p16le") == 0) {
+		if ((arg_width & 1) == 1) {
+			fprintf(stderr, "Frame format \"yuv422p16le\" requires an even frame width!\n");
+			throw EXIT_FAILURE;
+		}
+		auto fw = arg_width;
+		auto fh = arg_height;
+		auto hw = (fw >> 1);
+		auto channels = std::vector<channel_t>();
+		channels.push_back({ fw, fh });
+		channels.push_back({ hw, fh });
+		channels.push_back({ hw, fh });
+		return { channels, true };
 	}
 	fprintf(stderr, "Unsupported frame format!\n");
 	throw EXIT_FAILURE;
