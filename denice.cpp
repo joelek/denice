@@ -107,6 +107,14 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 		channels.push_back({ hw, fh });
 		channels.push_back({ hw, fh });
 		return { channels, true };
+	} else if (strcmp(raw_format, "yuv444p16le") == 0) {
+		auto fw = arg_width;
+		auto fh = arg_height;
+		auto channels = std::vector<channel_t>();
+		channels.push_back({ fw, fh });
+		channels.push_back({ fw, fh });
+		channels.push_back({ fw, fh });
+		return { channels, true };
 	}
 	fprintf(stderr, "Unsupported frame format!\n");
 	throw EXIT_FAILURE;
