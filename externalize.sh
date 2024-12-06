@@ -11,10 +11,13 @@ IFS=""
 
 rm $3
 
-echo "const char* $1 = \"\"" >> $3
+EOF="\r\n"
+
+printf "%s$EOF" "const char* $1 = \"\"" >> $3
 
 cat $2 | tr -d "\r" | while read -r LINE || [ -n "$LINE" ]; do
-	echo "\"$LINE\\n\"" >> $3
+	printf "%s$EOF" "\"$LINE\\n\"" >> $3
 done
 
-echo "\"\";" >> $3
+printf "%s$EOF" "\"\\n\"" >> $3
+printf "%s$EOF" "\"\";" >> $3
