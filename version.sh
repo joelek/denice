@@ -27,10 +27,12 @@ fi
 
 echo "new version: $MAJOR.$MINOR.$PATCH"
 
+EOF="\r\n"
+
 rm version.env
-echo "MAJOR=$MAJOR" >> version.env
-echo "MINOR=$MINOR" >> version.env
-echo "PATCH=$PATCH" >> version.env
+printf "%s$EOF" "MAJOR=$MAJOR" >> version.env
+printf "%s$EOF" "MINOR=$MINOR" >> version.env
+printf "%s$EOF" "PATCH=$PATCH" >> version.env
 
 git add version.env
 git commit -m "$MAJOR.$MINOR.$PATCH"
