@@ -1,5 +1,11 @@
 #!/bin/sh
 
+test -z "$(git status --porcelain)"
+if [ $? -gt 0 ]; then
+	echo "git working directory not clean"
+	exit 1
+fi
+
 source ./version.env
 
 if [ $# -eq 1 ] && ([ $1 = "major" ] || [ $1 = "minor" ] || [ $1 = "patch" ]); then
