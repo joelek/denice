@@ -1,8 +1,9 @@
 #!/bin/sh
 
 test -z "$(git status --porcelain)"
+
 if [ $? -gt 0 ]; then
-	echo "git working directory not clean"
+	echo "git status not clean"
 	exit 1
 fi
 
@@ -15,7 +16,7 @@ else
 	exit 1
 fi
 
-echo "old version: $MAJOR.$MINOR.$PATCH"
+echo "[old version: $MAJOR.$MINOR.$PATCH]"
 
 if [ $1 = "major" ]; then
 	MAJOR=$((MAJOR+1))
@@ -31,7 +32,7 @@ elif [ $1 = "patch" ]; then
 	PATCH=$((PATCH+1))
 fi
 
-echo "new version: $MAJOR.$MINOR.$PATCH"
+echo "[new version: $MAJOR.$MINOR.$PATCH]"
 
 EOF="\r\n"
 
@@ -40,6 +41,14 @@ printf "%s$EOF" "MAJOR=$MAJOR" >> version.env
 printf "%s$EOF" "MINOR=$MINOR" >> version.env
 printf "%s$EOF" "PATCH=$PATCH" >> version.env
 
+./make.sh release
+
+if [ $? -gt 0 ]; then
+	git checkout -- version.env
+	exit 1
+fi
+
+git add .
 git add version.env
 git commit -m "$MAJOR.$MINOR.$PATCH"
 git tag -a "v$MAJOR.$MINOR.$PATCH" -m "$MAJOR.$MINOR.$PATCH"
