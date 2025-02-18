@@ -396,8 +396,7 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 	status = filter_kernel.setArg(1, data_channel.source);
 	OPENCL_CHECK_STATUS();
-	auto zero = 0.0f;
-	queue.enqueueFillBuffer(data_channel.buffer, &zero, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
+	queue.enqueueFillBuffer(data_channel.buffer, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
 		for (auto x = 0; x < BLOCK_SIZE; x++) {
