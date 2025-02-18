@@ -440,6 +440,15 @@ auto is_system_little_endian()
 	return *(unsigned int*)(value) == 256;
 }
 
+auto get_image_format(bool two_bytes_per_pixel)
+-> cl::ImageFormat {
+	if (two_bytes_per_pixel) {
+		return cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT16);
+	} else {
+		return cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT8);
+	}
+}
+
 auto main(int argc, char** argv)
 -> int {
 	try {
@@ -475,10 +484,6 @@ auto main(int argc, char** argv)
 		OPENCL_CHECK_STATUS();
 		auto normalize_kernel = get_opencl_kernel(program, "normalize_kernel");
 		auto frame_buffer_capacity = 3;
-		auto image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT8);
-		if (arg_format.two_bytes_per_pixel) {
-			image_format = cl::ImageFormat(CL_LUMINANCE, CL_UNORM_INT16);
-		}
 		auto frames = std::vector<frame_t>();
 		for (auto i = 0; i < frame_buffer_capacity; i++) {
 			auto data_channels = std::vector<data_channel_t>();
@@ -486,9 +491,9 @@ auto main(int argc, char** argv)
 			for (auto& channel : arg_format.channels) {
 				auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
 				OPENCL_CHECK_STATUS();
-				auto source = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
+				auto source = cl::Image2D(context, CL_MEM_READ_WRITE, get_image_format(arg_format.two_bytes_per_pixel), channel.w, channel.h, 0, nullptr, &status);
 				OPENCL_CHECK_STATUS();
-				auto target = cl::Image2D(context, CL_MEM_READ_WRITE, image_format, channel.w, channel.h, 0, nullptr, &status);
+				auto target = cl::Image2D(context, CL_MEM_READ_WRITE, get_image_format(arg_format.two_bytes_per_pixel), channel.w, channel.h, 0, nullptr, &status);
 				OPENCL_CHECK_STATUS();
 				bytes_per_frame += (channel.w * channel.h);
 				data_channels.push_back({ channel, buffer, source, target });
