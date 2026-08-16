@@ -150,6 +150,16 @@ auto parse_strength(const char* raw_strength)
 	return value;
 }
 
+auto parse_passes(const char* raw_passes)
+-> int {
+	auto value = atoi(raw_passes);
+	if (value < 0) {
+		fprintf(stderr, "Passes may not be negative!\n");
+		throw EXIT_FAILURE;
+	}
+	return value;
+}
+
 auto get_opencl_status(int code)
 -> const char* {
 	switch (code) {
@@ -358,7 +368,7 @@ auto copy_frame_to_device(const cl::CommandQueue& queue, frame_t& frame, bool tw
 	OPENCL_CHECK_STATUS();
 }
 
-auto copy_channel_to_host(const cl::CommandQueue& queue, const data_channel_t& data_channel, unsigned char* buffer)
+auto copy_channel_to_host(const cl::CommandQueue& queue, const data_channel_t& data_channel, unsigned char* buffer, int passes)
 -> void {
 	auto origin = cl::size_t<3>();
 	origin[0] = 0;
@@ -369,16 +379,21 @@ auto copy_channel_to_host(const cl::CommandQueue& queue, const data_channel_t& d
 	region[1] = data_channel.channel.h;
 	region[2] = 1;
 	auto status = CL_SUCCESS;
-	status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, buffer);
+	auto passes_is_even = (passes & 1) == 0;
+	if (passes_is_even) {
+		status = queue.enqueueReadImage(data_channel.source, CL_TRUE, origin, region, 0, 0, buffer);
+	} else {
+		status = queue.enqueueReadImage(data_channel.target, CL_TRUE, origin, region, 0, 0, buffer);
+	}
 	OPENCL_CHECK_STATUS();
 }
 
-auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_bytes_per_pixel)
+auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_bytes_per_pixel, int passes)
 -> void {
 	auto status = CL_SUCCESS;
 	auto frame_buffer_offset = 0;
 	for (auto& data_channel : frame.data_channels) {
-		copy_channel_to_host(queue, data_channel, &frame.buffer.data()[frame_buffer_offset]);
+		copy_channel_to_host(queue, data_channel, &frame.buffer.data()[frame_buffer_offset], passes);
 		auto pixels_in_channel = (data_channel.channel.w * data_channel.channel.h);
 		if (two_bytes_per_pixel) {
 			pixels_in_channel *= 2;
@@ -389,13 +404,19 @@ auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel)
+auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel, int pass)
 -> void {
+	auto pass_is_even = (pass & 1) == 0;
 	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(1, data_channel.source);
-	OPENCL_CHECK_STATUS();
+	if (pass_is_even) {
+		status = filter_kernel.setArg(1, data_channel.source);
+		OPENCL_CHECK_STATUS();
+	} else {
+		status = filter_kernel.setArg(1, data_channel.target);
+		OPENCL_CHECK_STATUS();
+	}
 	queue.enqueueFillBuffer(data_channel.buffer, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
@@ -412,8 +433,13 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 			OPENCL_CHECK_STATUS();
 		}
 	}
-	status = normalize_kernel.setArg(0, data_channel.target);
-	OPENCL_CHECK_STATUS();
+	if (pass_is_even) {
+		status = normalize_kernel.setArg(0, data_channel.target);
+		OPENCL_CHECK_STATUS();
+	} else {
+		status = normalize_kernel.setArg(0, data_channel.source);
+		OPENCL_CHECK_STATUS();
+	}
 	status = normalize_kernel.setArg(1, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
 	auto local_w = BLOCK_SIZE;
@@ -426,10 +452,10 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame)
+auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame, int pass)
 -> void {
 	for (auto& data_channel : frame.data_channels) {
-		filter_channel(queue, filter_kernel, normalize_kernel, data_channel);
+		filter_channel(queue, filter_kernel, normalize_kernel, data_channel, pass);
 	}
 }
 
@@ -452,22 +478,25 @@ auto main(int argc, char** argv)
 -> int {
 	try {
 		auto status = CL_SUCCESS;
-		if (argc != 5) {
+		if (argc != 5 && argc != 6) {
 			fprintf(stderr, "Please supply program arguments in the following order.\n");
 			fprintf(stderr, "\tEnum describing frame format.\n");
 			fprintf(stderr, "\tInteger describing frame width.\n");
 			fprintf(stderr, "\tInteger describing frame height.\n");
 			fprintf(stderr, "\tNumber describing denoising strength.\n");
+			fprintf(stderr, "\tOptional number describing number of passes.\n");
 			throw EXIT_FAILURE;
 		}
 		auto raw_format = argv[1];
 		auto raw_width = argv[2];
 		auto raw_height = argv[3];
 		auto raw_strength = argv[4];
+		auto raw_passes = argc >= 6 ? argv[5] : "1";
 		auto arg_width = parse_width(raw_width);
 		auto arg_height = parse_height(raw_height);
 		auto arg_format = parse_format(raw_format, arg_width, arg_height);
 		auto arg_strength = parse_strength(raw_strength);
+		auto arg_passes = parse_passes(raw_passes);
 		fprintf(stderr, "Frame format set to \"%s\".\n", raw_format);
 		fprintf(stderr, "Frame width set to %i.\n", arg_width);
 		fprintf(stderr, "Frame height set to %i.\n", arg_height);
@@ -524,8 +553,10 @@ auto main(int argc, char** argv)
 				}
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				if (arg_strength > 0.0) {
-					filter_frame(queue, filter_kernel, normalize_kernel, frame);
-					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel);
+					for (auto j = 0; j < arg_passes; j++) {
+						filter_frame(queue, filter_kernel, normalize_kernel, frame, j);
+					}
+					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel, arg_passes);
 				}
 				frames_filtered += 1;
 			}
