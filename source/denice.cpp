@@ -404,26 +404,34 @@ auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel, int pass)
+auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel_prev, const data_channel_t& data_channel, const data_channel_t& data_channel_next, int pass)
 -> void {
 	auto pass_is_even = (pass & 1) == 0;
 	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
 	if (pass_is_even) {
-		status = filter_kernel.setArg(1, data_channel.source);
+		status = filter_kernel.setArg(1, data_channel_prev.source);
+		OPENCL_CHECK_STATUS();
+		status = filter_kernel.setArg(2, data_channel.source);
+		OPENCL_CHECK_STATUS();
+		status = filter_kernel.setArg(3, data_channel_next.source);
 		OPENCL_CHECK_STATUS();
 	} else {
-		status = filter_kernel.setArg(1, data_channel.target);
+		status = filter_kernel.setArg(1, data_channel_prev.target);
+		OPENCL_CHECK_STATUS();
+		status = filter_kernel.setArg(2, data_channel.target);
+		OPENCL_CHECK_STATUS();
+		status = filter_kernel.setArg(3, data_channel_next.target);
 		OPENCL_CHECK_STATUS();
 	}
 	queue.enqueueFillBuffer(data_channel.buffer, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
 		for (auto x = 0; x < BLOCK_SIZE; x++) {
-			status = filter_kernel.setArg(2, x);
+			status = filter_kernel.setArg(4, x);
 			OPENCL_CHECK_STATUS();
-			status = filter_kernel.setArg(3, y);
+			status = filter_kernel.setArg(5, y);
 			OPENCL_CHECK_STATUS();
 			auto local_w = BLOCK_SIZE;
 			auto local_h = BLOCK_SIZE;
@@ -452,10 +460,13 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame, int pass)
+auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame_prev, frame_t& frame, frame_t& frame_next, int pass)
 -> void {
-	for (auto& data_channel : frame.data_channels) {
-		filter_channel(queue, filter_kernel, normalize_kernel, data_channel, pass);
+	for (auto i = 0; i < (int)frame.data_channels.size(); i += 1) {
+		auto& data_channel_prev = frame_prev.data_channels.at(i);
+		auto& data_channel = frame.data_channels.at(i);
+		auto& data_channel_next = frame_next.data_channels.at(i);
+		filter_channel(queue, filter_kernel, normalize_kernel, data_channel_prev, data_channel, data_channel_next, pass);
 	}
 }
 
@@ -508,7 +519,7 @@ auto main(int argc, char** argv)
 		auto queue = get_opencl_queue(context, device);
 		auto program = get_opencl_program(context, device, dct_denoise);
 		auto filter_kernel = get_opencl_kernel(program, "filter_kernel");
-		status = filter_kernel.setArg(4, arg_strength);
+		status = filter_kernel.setArg(6, arg_strength);
 		OPENCL_CHECK_STATUS();
 		auto normalize_kernel = get_opencl_kernel(program, "normalize_kernel");
 		auto frame_buffer_capacity = 3;
@@ -554,7 +565,7 @@ auto main(int argc, char** argv)
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				if (arg_strength > 0.0) {
 					for (auto j = 0; j < arg_passes; j++) {
-						filter_frame(queue, filter_kernel, normalize_kernel, frame, j);
+						filter_frame(queue, filter_kernel, normalize_kernel, frame, frame, frame, j);
 					}
 					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel, arg_passes);
 				}
