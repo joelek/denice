@@ -559,19 +559,30 @@ auto main(int argc, char** argv)
 				frames_read += new_frames_read;
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
-				if (!feof(stdin) && (i >= frames_read - frame_buffer_capacity + 1)) {
+				auto is_first_frame = (i == 0);
+				auto is_last_frame = (i + 1 == frames_read) && feof(stdin);
+				auto prev_frame_in_frame_buffer = (i - 1 >= 0) && (i - 1 >= frames_read - frame_buffer_capacity);
+				auto next_frame_in_frame_buffer = (i + 1 < frames_read);
+				if (!prev_frame_in_frame_buffer && !is_first_frame) {
 					break;
 				}
+				if (!next_frame_in_frame_buffer && !is_last_frame) {
+					break;
+				}
+				auto prev_frame_index = is_first_frame ? i : i - 1;
+				auto next_frame_index = is_last_frame ? i : i + 1;
+				auto& frame_prev = frames.at(compute_modulus(prev_frame_index, frame_buffer_capacity));
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
+				auto& frame_next = frames.at(compute_modulus(next_frame_index, frame_buffer_capacity));
 				if (arg_strength > 0.0) {
 					for (auto j = 0; j < arg_passes; j++) {
-						filter_frame(queue, filter_kernel, normalize_kernel, frame, frame, frame, j);
+						filter_frame(queue, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, j);
 					}
 					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel, arg_passes);
 				}
 				frames_filtered += 1;
 			}
-			for (auto i = frames_written; i < frames_filtered; i++) {
+			for (auto i = frames_written; i < (feof(stdin) ? frames_filtered : frames_filtered - 1); i++) {
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto new_frames_written = fwrite(frame.buffer.data(), frame.buffer.size(), 1, stdout);
 				if (new_frames_written == 0) {
