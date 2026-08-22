@@ -557,6 +557,7 @@ auto main(int argc, char** argv)
 					copy_frame_to_device(queue, frame, arg_format.two_bytes_per_pixel);
 				}
 				frames_read += new_frames_read;
+				fprintf(stderr, "R: %i\n", i);
 			}
 			for (auto i = frames_filtered; i < frames_read; i++) {
 				auto is_first_frame = (i == 0);
@@ -581,6 +582,7 @@ auto main(int argc, char** argv)
 					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel, arg_passes);
 				}
 				frames_filtered += 1;
+				fprintf(stderr, "F: %i\n", i);
 			}
 			for (auto i = frames_written; i < (feof(stdin) ? frames_filtered : frames_filtered - 1); i++) {
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
@@ -589,6 +591,7 @@ auto main(int argc, char** argv)
 					break;
 				}
 				frames_written += new_frames_written;
+				fprintf(stderr, "W: %i\n", i);
 			}
 			usleep(1000);
 		}
