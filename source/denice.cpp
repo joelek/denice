@@ -593,6 +593,7 @@ auto main(int argc, char** argv)
 				frames_written += new_frames_written;
 				fprintf(stderr, "W: %i\n", i);
 			}
+			fflush(stderr);
 			usleep(1000);
 		}
 		fprintf(stderr, "A total of %i frames were read.\n", frames_read);
