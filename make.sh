@@ -1,9 +1,9 @@
 #!/bin/sh
 
-COMPILER_OPTIONS="-std=c++11 -shared-libgcc -pedantic -Wall -Wextra -Werror -O3";
+COMPILER_OPTIONS="-std=c++20 -static -pedantic -Wall -Wextra -O3";
 COMPILER_DEFINES="-D DEBUG";
-PATH_INCLUDE="";
-PATH_LIBRARY="";
+PATH_INCLUDE="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\include";
+PATH_LIBRARY="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\lib\x64";
 LINKED_LIBRARIES="-l stdc++ -l OpenCL";
 
 ./externalize.sh dct_denoise source/dct_denoise.opencl.c source/dct_denoise.cpp
