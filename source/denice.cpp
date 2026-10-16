@@ -128,21 +128,21 @@ auto parse_height(const char* raw_height)
 	return value;
 }
 
-auto parse_strength(const char* raw_strength)
+auto parse_min_strength(const char* raw_min_strength)
 -> float {
-	auto value = atof(raw_strength);
+	auto value = atof(raw_min_strength);
 	if (value < 0.0) {
-		fprintf(stderr, "Denoising strength may not be negative!\n");
+		fprintf(stderr, "Min denoising strength may not be negative!\n");
 		throw EXIT_FAILURE;
 	}
 	return value;
 }
 
-auto parse_passes(const char* raw_passes)
--> int {
-	auto value = atoi(raw_passes);
-	if (value < 0) {
-		fprintf(stderr, "Passes may not be negative!\n");
+auto parse_max_strength(const char* raw_max_strength)
+-> float {
+	auto value = atof(raw_max_strength);
+	if (value < 0.0) {
+		fprintf(stderr, "Max denoising strength may not be negative!\n");
 		throw EXIT_FAILURE;
 	}
 	return value;
@@ -356,6 +356,29 @@ auto copy_frame_to_device(const cl::CommandQueue& queue, frame_t& frame, bool tw
 	OPENCL_CHECK_STATUS();
 }
 
+auto copy_source_channel(const cl::CommandQueue& queue, const data_channel_t& data_channel)
+-> void {
+	auto origin = cl::size_t<3>();
+	origin[0] = 0;
+	origin[1] = 0;
+	origin[2] = 0;
+	auto region = cl::size_t<3>();
+	region[0] = data_channel.channel.w;
+	region[1] = data_channel.channel.h;
+	region[2] = 1;
+	auto status = CL_SUCCESS;
+	status = queue.enqueueCopyImage(data_channel.source, data_channel.target, origin, origin, region, nullptr, nullptr);
+	OPENCL_CHECK_STATUS();
+}
+
+auto copy_source_frame(const cl::CommandQueue& queue, frame_t& frame)
+-> void {
+	for (auto i = 0; i < (int)frame.data_channels.size(); i += 1) {
+		auto& data_channel = frame.data_channels.at(i);
+		copy_source_channel(queue, data_channel);
+	}
+}
+
 auto copy_channel_to_host(const cl::CommandQueue& queue, const data_channel_t& data_channel, unsigned char* buffer, int passes)
 -> void {
 	auto origin = cl::size_t<3>();
@@ -392,10 +415,10 @@ auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel_prev, const data_channel_t& data_channel, const data_channel_t& data_channel_next, int pass)
+auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel_prev, const data_channel_t& data_channel, const data_channel_t& data_channel_next, int pass, float arg_min_strength, float arg_max_strength)
 -> void {
-	auto pass_is_even = (pass & 1) == 0;
 	auto status = CL_SUCCESS;
+	auto pass_is_even = (pass & 1) == 0;
 	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
 	if (pass_is_even) {
@@ -413,13 +436,17 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 		status = filter_kernel.setArg(3, data_channel_next.target);
 		OPENCL_CHECK_STATUS();
 	}
+	status = filter_kernel.setArg(4, arg_min_strength);
+	OPENCL_CHECK_STATUS();
+	status = filter_kernel.setArg(5, arg_max_strength);
+	OPENCL_CHECK_STATUS();
 	queue.enqueueFillBuffer(data_channel.buffer, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
 	for (auto y = 0; y < BLOCK_SIZE; y++) {
 		for (auto x = 0; x < BLOCK_SIZE; x++) {
-			status = filter_kernel.setArg(4, x);
+			status = filter_kernel.setArg(6, x);
 			OPENCL_CHECK_STATUS();
-			status = filter_kernel.setArg(5, y);
+			status = filter_kernel.setArg(7, y);
 			OPENCL_CHECK_STATUS();
 			auto local_w = BLOCK_SIZE;
 			auto local_h = BLOCK_SIZE;
@@ -448,13 +475,13 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame_prev, frame_t& frame, frame_t& frame_next, int pass)
+auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame_prev, frame_t& frame, frame_t& frame_next, int pass, float arg_min_strength, float arg_max_strength)
 -> void {
 	for (auto i = 0; i < (int)frame.data_channels.size(); i += 1) {
 		auto& data_channel_prev = frame_prev.data_channels.at(i);
 		auto& data_channel = frame.data_channels.at(i);
 		auto& data_channel_next = frame_next.data_channels.at(i);
-		filter_channel(queue, filter_kernel, normalize_kernel, data_channel_prev, data_channel, data_channel_next, pass);
+		filter_channel(queue, filter_kernel, normalize_kernel, data_channel_prev, data_channel, data_channel_next, pass, arg_min_strength, arg_max_strength);
 	}
 }
 
@@ -482,24 +509,25 @@ auto main(int argc, char** argv)
 			fprintf(stderr, "\tEnum describing frame format.\n");
 			fprintf(stderr, "\tInteger describing frame width.\n");
 			fprintf(stderr, "\tInteger describing frame height.\n");
-			fprintf(stderr, "\tNumber describing denoising strength.\n");
-			fprintf(stderr, "\tOptional number describing number of passes.\n");
+			fprintf(stderr, "\tNumber describing min denoising strength.\n");
+			fprintf(stderr, "\tNumber describing max denoising strength.\n");
 			throw EXIT_FAILURE;
 		}
 		auto raw_format = argv[1];
 		auto raw_width = argv[2];
 		auto raw_height = argv[3];
-		auto raw_strength = argv[4];
-		auto raw_passes = argc >= 6 ? argv[5] : "1";
+		auto raw_min_strength = argv[4];
+		auto raw_max_strength = argc >= 6 ? argv[5] : argv[4];
 		auto arg_width = parse_width(raw_width);
 		auto arg_height = parse_height(raw_height);
 		auto arg_format = parse_format(raw_format, arg_width, arg_height);
-		auto arg_strength = parse_strength(raw_strength);
-		auto arg_passes = parse_passes(raw_passes);
+		auto arg_min_strength = parse_min_strength(raw_min_strength);
+		auto arg_max_strength = parse_max_strength(raw_max_strength);
 		fprintf(stderr, "Frame format set to \"%s\".\n", raw_format);
 		fprintf(stderr, "Frame width set to %i.\n", arg_width);
 		fprintf(stderr, "Frame height set to %i.\n", arg_height);
-		fprintf(stderr, "Denoising strength set to %f.\n", arg_strength);
+		fprintf(stderr, "Min denoising strength set to %f.\n", arg_min_strength);
+		fprintf(stderr, "Max denoising strength set to %f.\n", arg_max_strength);
 		set_binary_input_output();
 		auto platform = get_opencl_platform();
 		auto device = get_opencl_device(platform);
@@ -507,8 +535,6 @@ auto main(int argc, char** argv)
 		auto queue = get_opencl_queue(context, device);
 		auto program = get_opencl_program(context, device, dct_denoise);
 		auto filter_kernel = get_opencl_kernel(program, "filter_kernel");
-		status = filter_kernel.setArg(6, arg_strength);
-		OPENCL_CHECK_STATUS();
 		auto normalize_kernel = get_opencl_kernel(program, "normalize_kernel");
 		auto frame_buffer_capacity = 3;
 		auto frames = std::vector<frame_t>();
@@ -541,9 +567,8 @@ auto main(int argc, char** argv)
 				if (new_frames_read == 0) {
 					break;
 				}
-				if (arg_strength > 0.0) {
-					copy_frame_to_device(queue, frame, arg_format.two_bytes_per_pixel);
-				}
+				copy_frame_to_device(queue, frame, arg_format.two_bytes_per_pixel);
+				copy_source_frame(queue, frame);
 				frames_read += new_frames_read;
 				fprintf(stderr, "R: %i\n", i);
 			}
@@ -563,17 +588,13 @@ auto main(int argc, char** argv)
 				auto& frame_prev = frames.at(compute_modulus(prev_frame_index, frame_buffer_capacity));
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto& frame_next = frames.at(compute_modulus(next_frame_index, frame_buffer_capacity));
-				if (arg_strength > 0.0) {
-					for (auto j = 0; j < arg_passes; j++) {
-						filter_frame(queue, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, j);
-					}
-					copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel, arg_passes);
-				}
+				filter_frame(queue, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, 0, arg_min_strength, arg_max_strength);
 				frames_filtered += 1;
 				fprintf(stderr, "F: %i\n", i);
 			}
 			for (auto i = frames_written; i < (feof(stdin) ? frames_filtered : frames_filtered - 1); i++) {
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
+				copy_frame_to_host(queue, frame, arg_format.two_bytes_per_pixel, 1);
 				auto new_frames_written = fwrite(frame.buffer.data(), frame.buffer.size(), 1, stdout);
 				if (new_frames_written == 0) {
 					break;

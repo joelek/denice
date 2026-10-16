@@ -28,7 +28,7 @@ Build the project using the make script `make.sh`. This will produce a single bi
 Launch the binary with the correct arguments.
 
 ```
-denice <format> <width> <height> <strength>
+denice <format> <width> <height> <min_strength> [max_strength]
 ```
 
 Write frames, channel by channel, to the standard input. Read frames, channel by channel, from the standard output. When the last frame has been written, write `EOF` to the standard input.

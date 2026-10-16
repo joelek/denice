@@ -240,7 +240,7 @@ void filter_block(__local float* block, int x, int y, float threshold) {
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
-filter_kernel(__global float* buffer, __read_only image2d_t source_prev, __read_only image2d_t source, __read_only image2d_t source_next, int x, int y, float threshold) {
+filter_kernel(__global float* buffer, __read_only image2d_t source_prev, __read_only image2d_t source, __read_only image2d_t source_next, float min_strength, float max_strength, int x, int y) {
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
 	int2 ss = { get_image_width(source), get_image_height(source) };
@@ -252,11 +252,16 @@ filter_kernel(__global float* buffer, __read_only image2d_t source_prev, __read_
 		return;
 	}
 	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
-	float s = read_imagef(source, sampler, coords).s0;
+	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
+	copy_to_block(block1, lid.x, lid.y, read_imagef(source, sampler, coords).s0);
+	compute_dct_xy(block1, lid.x, lid.y);
+	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
+	block_copy(block2, block1, lid.x, lid.y);
+	filter_block(block1, lid.x, lid.y, min_strength);
+	filter_block(block2, lid.x, lid.y, max_strength);
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
-	copy_to_block(block, lid.x, lid.y, s);
-	compute_dct_xy(block, lid.x, lid.y);
-	filter_block(block, lid.x, lid.y, threshold);
+	block_add(block, block1, block2, lid.x, lid.y);
+	block_mulf(block, block, 0.5f, lid.x, lid.y);
 	compute_idct_xy(block, lid.x, lid.y);
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
 	buffer[(coords.y * ss.x) + coords.x] += t;
