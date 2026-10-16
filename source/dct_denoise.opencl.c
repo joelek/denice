@@ -177,6 +177,10 @@ float block_variance(__local float* block) {
 	return sum;
 }
 
+float block_stddev(__local float* block) {
+	return sqrt(block_variance(block));
+}
+
 void block_abs(__local float* target, __local float* lhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	target[offset] = fabs(lhs[offset]);
