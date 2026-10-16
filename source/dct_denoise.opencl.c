@@ -223,6 +223,12 @@ void block_mulf(__local float* target, __local float* lhs, float rhs, int x, int
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
+void block_copy(__local float* target, __local float* lhs, int x, int y) {
+	int offset = (y << BLOCK_SIZE_LOG2) + x;
+	target[offset] = lhs[offset];
+	barrier(CLK_LOCAL_MEM_FENCE);
+}
+
 void filter_block(__local float* block, int x, int y, float threshold) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	float s = block[offset];
