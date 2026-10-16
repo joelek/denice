@@ -54,6 +54,7 @@ auto compute_global_size_floor(unsigned int data_size, unsigned int local_size)
 struct channel_t {
 	int w;
 	int h;
+	bool is_luma;
 };
 
 struct format_t {
@@ -82,26 +83,26 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 		auto hw = (fw + 1) / 2;
 		auto hh = (fh + 1) / 2;
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ fw, fh });
-		channels.push_back({ hw, hh });
-		channels.push_back({ hw, hh });
+		channels.push_back({ fw, fh, true });
+		channels.push_back({ hw, hh, false });
+		channels.push_back({ hw, hh, false });
 		return { channels, true };
 	} else if (strcmp(raw_format, "yuv422p16le") == 0) {
 		auto fw = arg_width;
 		auto fh = arg_height;
 		auto hw = (fw + 1) / 2;
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ fw, fh });
-		channels.push_back({ hw, fh });
-		channels.push_back({ hw, fh });
+		channels.push_back({ fw, fh, true });
+		channels.push_back({ hw, fh, false });
+		channels.push_back({ hw, fh, false });
 		return { channels, true };
 	} else if (strcmp(raw_format, "yuv444p16le") == 0) {
 		auto fw = arg_width;
 		auto fh = arg_height;
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ fw, fh });
-		channels.push_back({ fw, fh });
-		channels.push_back({ fw, fh });
+		channels.push_back({ fw, fh, true });
+		channels.push_back({ fw, fh, false });
+		channels.push_back({ fw, fh, false });
 		return { channels, true };
 	} else if (strcmp(raw_format, "yuv420p") == 0) {
 		auto fw = arg_width;
@@ -109,26 +110,26 @@ auto parse_format(const char* raw_format, int arg_width, int arg_height)
 		auto hw = (fw + 1) / 2;
 		auto hh = (fh + 1) / 2;
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ fw, fh });
-		channels.push_back({ hw, hh });
-		channels.push_back({ hw, hh });
+		channels.push_back({ fw, fh, true });
+		channels.push_back({ hw, hh, false });
+		channels.push_back({ hw, hh, false });
 		return { channels, false };
 	} else if (strcmp(raw_format, "yuv422p") == 0) {
 		auto fw = arg_width;
 		auto fh = arg_height;
 		auto hw = (fw + 1) / 2;
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ fw, fh });
-		channels.push_back({ hw, fh });
-		channels.push_back({ hw, fh });
+		channels.push_back({ fw, fh, true });
+		channels.push_back({ hw, fh, false });
+		channels.push_back({ hw, fh, false });
 		return { channels, false };
 	} else if (strcmp(raw_format, "yuv444p") == 0) {
 		auto fw = arg_width;
 		auto fh = arg_height;
 		auto channels = std::vector<channel_t>();
-		channels.push_back({ fw, fh });
-		channels.push_back({ fw, fh });
-		channels.push_back({ fw, fh });
+		channels.push_back({ fw, fh, true });
+		channels.push_back({ fw, fh, false });
+		channels.push_back({ fw, fh, false });
 		return { channels, false };
 	}
 	fprintf(stderr, "Unsupported frame format!\n");
