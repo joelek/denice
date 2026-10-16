@@ -165,7 +165,7 @@ float block_avg(__local float* block) {
 	return sum;
 }
 
-float block_mse(__local float* block) {
+float block_variance(__local float* block) {
 	float avg = block_avg(block);
 	float sum = 0.0f;
 	for (int i = 0; i < (BLOCK_SIZE * BLOCK_SIZE); i++) {
