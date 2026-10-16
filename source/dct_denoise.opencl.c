@@ -1,5 +1,6 @@
 #define BLOCK_SIZE_LOG2 3
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
+#define BLOCK_MAX (BLOCK_SIZE - 1)
 
 __constant float dct_coefficients[64] = {
 	 0.35355339059327378637f,
