@@ -232,7 +232,7 @@ void block_copy(__local float* target, __local float* lhs, int x, int y) {
 void filter_block(__local float* block, int x, int y, float threshold) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
 	float s = block[offset];
-	if (fabs(s) < threshold) {
+	if (offset > 0 && fabs(s) < fabs(threshold)) {
 		block[offset] = 0.0f;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
