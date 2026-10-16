@@ -4,7 +4,7 @@ Hardware-accelerated detail-preserving video denoising.
 
 ## Technology
 
-This project uses a denoising technique called DCT-denoising. The technique exploits the fact that uniform noise is uniformly distributed in the frequency domain.
+This project uses a denoising technique called [DCT-denoising](http://www.ipol.im/pub/art/2011/ys-dct/revisions/2011-10-24/ys_dct.html). The technique exploits the fact that uniform noise is uniformly distributed in the frequency domain.
 
 ## Configure
 
@@ -32,3 +32,5 @@ denice <format> <width> <height> <strength>
 ```
 
 Write frames, channel by channel, to the standard input. Read frames, channel by channel, from the standard output. When the last frame has been written, write `EOF` to the standard input.
+
+Strength should be somewhere between 0.00 and 0.05.
