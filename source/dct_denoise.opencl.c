@@ -251,7 +251,7 @@ filter_kernel(__global float* buffer, __read_only image2d_t source_prev, __read_
 	if (coords.y >= ss.y) {
 		return;
 	}
-	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
 	copy_to_block(block1, lid.x, lid.y, read_imagef(source, sampler, coords).s0);
 	compute_dct_xy(block1, lid.x, lid.y);
@@ -304,7 +304,7 @@ dct_transform(__write_only image2d_t target, __read_only image2d_t source) {
 	if (gid.y >= get_image_height(target)) {
 		return;
 	}
-	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 	float s = read_imagef(source, sampler, gid).s0;
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
 	copy_to_block(block, lid.x, lid.y, s);
@@ -333,7 +333,7 @@ idct_transform(__write_only image2d_t target, __read_only image2d_t source) {
 	if (gid.y >= get_image_height(target)) {
 		return;
 	}
-	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 	float s = read_imagef(source, sampler, gid).s0;
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
 	copy_to_block(block, lid.x, lid.y, s);
