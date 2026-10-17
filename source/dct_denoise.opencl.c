@@ -1,6 +1,3 @@
-#define BLOCK_SIZE_LOG2 3
-#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
-
 __constant float dct_coefficients_8x8[64] = {
 	 0.35355339059327378637f,
 	 0.35355339059327378637f,
@@ -486,6 +483,9 @@ void filter_block(int block_size_log_2, __local float* target, __local float* lh
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
+#define BLOCK_SIZE_LOG2 3
+#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
+
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
 filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only image2d_t source_prev, __read_only image2d_t source, __read_only image2d_t source_next, float min_strength, float max_strength, int x, int y) {
@@ -534,3 +534,61 @@ normalize_kernel_8x8(__write_only image2d_t target, __global float* buffer, __gl
 	float t = s / n;
 	write_imagef(target, coords, (float4)(t));
 }
+
+#undef BLOCK_SIZE_LOG2
+#undef BLOCK_SIZE
+
+#define BLOCK_SIZE_LOG2 4
+#define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
+
+__kernel void
+__attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
+filter_kernel_16x16(__global float* buffer, __global float* counter, __read_only image2d_t source_prev, __read_only image2d_t source, __read_only image2d_t source_next, float min_strength, float max_strength, int x, int y) {
+	int2 gid = { get_global_id(0), get_global_id(1) };
+	int2 lid = { get_local_id(0), get_local_id(1) };
+	int2 ss = { get_image_width(source), get_image_height(source) };
+	int2 coords = { gid.x - x, gid.y - y };
+	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
+	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
+	__local float block[BLOCK_SIZE * BLOCK_SIZE];
+	copy_to_block(BLOCK_SIZE_LOG2, block1, read_imagef(source, sampler, coords).s0, lid.x, lid.y);
+	compute_dct_xy(BLOCK_SIZE_LOG2, dct_coefficients_16x16, block1, lid.x, lid.y);
+	block_copy(BLOCK_SIZE_LOG2, block2, block1, lid.x, lid.y);
+	filter_block(BLOCK_SIZE_LOG2, block1, block1, lid.x, lid.y, min_strength);
+	filter_block(BLOCK_SIZE_LOG2, block2, block2, lid.x, lid.y, max_strength);
+	block_add(BLOCK_SIZE_LOG2, block, block1, block2, lid.x, lid.y);
+	block_mulf(BLOCK_SIZE_LOG2, block, block, 0.5f, lid.x, lid.y);
+	compute_idct_xy(BLOCK_SIZE_LOG2, dct_coefficients_16x16, block, lid.x, lid.y);
+	if (coords.x < 0 || coords.x >= ss.x) {
+		return;
+	}
+	if (coords.y < 0 || coords.y >= ss.y) {
+		return;
+	}
+	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
+	buffer[(coords.y * ss.x) + coords.x] += t;
+	counter[(coords.y * ss.x) + coords.x] += 1;
+}
+
+__kernel void
+__attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
+normalize_kernel_16x16(__write_only image2d_t target, __global float* buffer, __global float* counter) {
+	int2 gid = { get_global_id(0), get_global_id(1) };
+	int2 lid = { get_local_id(0), get_local_id(1) };
+	int2 ts = { get_image_width(target), get_image_height(target) };
+	int2 coords = { gid.x, gid.y };
+	if (coords.x >= ts.x) {
+		return;
+	}
+	if (coords.y >= ts.y) {
+		return;
+	}
+	float s = buffer[(coords.y * ts.x) + coords.x];
+	float n = counter[(coords.y * ts.x) + coords.x];
+	float t = s / n;
+	write_imagef(target, coords, (float4)(t));
+}
+
+#undef BLOCK_SIZE_LOG2
+#undef BLOCK_SIZE
