@@ -65,6 +65,7 @@ struct format_t {
 struct data_channel_t {
 	channel_t& channel;
 	cl::Buffer buffer;
+	cl::Buffer counter;
 	cl::Image2D source;
 	cl::Image2D target;
 };
@@ -443,28 +444,32 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(1, data_channel_prev.source);
+	status = filter_kernel.setArg(1, data_channel.counter);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(2, data_channel.source);
+	status = filter_kernel.setArg(2, data_channel_prev.source);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(3, data_channel_next.source);
+	status = filter_kernel.setArg(3, data_channel.source);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(4, arg_min_strength);
+	status = filter_kernel.setArg(4, data_channel_next.source);
 	OPENCL_CHECK_STATUS();
-	status = filter_kernel.setArg(5, arg_max_strength);
+	status = filter_kernel.setArg(5, arg_min_strength);
+	OPENCL_CHECK_STATUS();
+	status = filter_kernel.setArg(6, arg_max_strength);
 	OPENCL_CHECK_STATUS();
 	queue.enqueueFillBuffer(data_channel.buffer, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
-	for (auto y = 0; y < BLOCK_SIZE; y++) {
-		for (auto x = 0; x < BLOCK_SIZE; x++) {
-			status = filter_kernel.setArg(6, x);
+	queue.enqueueFillBuffer(data_channel.counter, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
+	OPENCL_CHECK_STATUS();
+	for (auto y = 0; y < BLOCK_SIZE; y += 1) {
+		for (auto x = 0; x < BLOCK_SIZE; x += 1) {
+			status = filter_kernel.setArg(7, x);
 			OPENCL_CHECK_STATUS();
-			status = filter_kernel.setArg(7, y);
+			status = filter_kernel.setArg(8, y);
 			OPENCL_CHECK_STATUS();
 			auto local_w = BLOCK_SIZE;
 			auto local_h = BLOCK_SIZE;
-			auto global_w = compute_global_size_floor((data_channel.channel.w - x), local_w);
-			auto global_h = compute_global_size_floor((data_channel.channel.h - y), local_h);
+			auto global_w = compute_global_size_ceil((data_channel.channel.w - x), local_w);
+			auto global_h = compute_global_size_ceil((data_channel.channel.h - y), local_h);
 			status = queue.enqueueNDRangeKernel(filter_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 			OPENCL_CHECK_STATUS();
 		}
@@ -472,6 +477,8 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	status = normalize_kernel.setArg(0, data_channel.target);
 	OPENCL_CHECK_STATUS();
 	status = normalize_kernel.setArg(1, data_channel.buffer);
+	OPENCL_CHECK_STATUS();
+	status = normalize_kernel.setArg(2, data_channel.counter);
 	OPENCL_CHECK_STATUS();
 	auto local_w = BLOCK_SIZE;
 	auto local_h = BLOCK_SIZE;
@@ -552,12 +559,14 @@ auto main(int argc, char** argv)
 			for (auto& channel : arg_format.channels) {
 				auto buffer = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
 				OPENCL_CHECK_STATUS();
+				auto counter = cl::Buffer(context, CL_MEM_READ_WRITE, channel.w * channel.h * sizeof(float), nullptr, &status);
+				OPENCL_CHECK_STATUS();
 				auto source = cl::Image2D(context, CL_MEM_READ_WRITE, get_image_format(arg_format.two_bytes_per_pixel), channel.w, channel.h, 0, nullptr, &status);
 				OPENCL_CHECK_STATUS();
 				auto target = cl::Image2D(context, CL_MEM_READ_WRITE, get_image_format(arg_format.two_bytes_per_pixel), channel.w, channel.h, 0, nullptr, &status);
 				OPENCL_CHECK_STATUS();
 				bytes_per_frame += (channel.w * channel.h);
-				data_channels.push_back({ channel, buffer, source, target });
+				data_channels.push_back({ channel, buffer, counter, source, target });
 			}
 			if (arg_format.two_bytes_per_pixel) {
 				bytes_per_frame *= 2;
