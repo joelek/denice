@@ -343,12 +343,12 @@ void convert_to_absolute_range(int block_size_log_2, __local float* target, __lo
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void compute_dct(int block_size_log_2, __local float* block, int offset, int stride_log2, int k) {
+void compute_dct(int block_size_log_2, __constant float* coefficients, __local float* block, int offset, int stride_log2, int k) {
 	float s = 0.0f;
 	int block_size = (1 << block_size_log_2);
 	for (int n = 0; n < block_size; n++) {
 		float v = block[offset + (n << stride_log2)];
-		float c = dct_coefficients_8x8[(k << block_size_log_2) + n];
+		float c = coefficients[(k << block_size_log_2) + n];
 		s += (v * c);
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -356,25 +356,25 @@ void compute_dct(int block_size_log_2, __local float* block, int offset, int str
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void compute_dct_x(int block_size_log_2, __local float* block, int x, int y) {
-	compute_dct(block_size_log_2, block, y << block_size_log_2, 0, x);
+void compute_dct_x(int block_size_log_2, __constant float* coefficients, __local float* block, int x, int y) {
+	compute_dct(block_size_log_2, coefficients, block, y << block_size_log_2, 0, x);
 }
 
-void compute_dct_y(int block_size_log_2, __local float* block, int x, int y) {
-	compute_dct(block_size_log_2, block, x, block_size_log_2, y);
+void compute_dct_y(int block_size_log_2, __constant float* coefficients, __local float* block, int x, int y) {
+	compute_dct(block_size_log_2, coefficients, block, x, block_size_log_2, y);
 }
 
-void compute_dct_xy(int block_size_log_2, __local float* block, int x, int y) {
-	compute_dct_x(block_size_log_2, block, x, y);
-	compute_dct_y(block_size_log_2, block, x, y);
+void compute_dct_xy(int block_size_log_2, __constant float* coefficients, __local float* block, int x, int y) {
+	compute_dct_x(block_size_log_2, coefficients, block, x, y);
+	compute_dct_y(block_size_log_2, coefficients, block, x, y);
 }
 
-void compute_idct(int block_size_log_2, __local float* block, int offset, int stride_log2, int k) {
+void compute_idct(int block_size_log_2, __constant float* coefficients, __local float* block, int offset, int stride_log2, int k) {
 	float s = 0.0f;
 	int block_size = (1 << block_size_log_2);
 	for (int n = 0; n < block_size; n++) {
 		float v = block[offset + (n << stride_log2)];
-		float c = dct_coefficients_8x8[(n << block_size_log_2) + k];
+		float c = coefficients[(n << block_size_log_2) + k];
 		s += (v * c);
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -382,17 +382,17 @@ void compute_idct(int block_size_log_2, __local float* block, int offset, int st
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void compute_idct_x(int block_size_log_2, __local float* block, int x, int y) {
-	compute_idct(block_size_log_2, block, y << block_size_log_2, 0, x);
+void compute_idct_x(int block_size_log_2, __constant float* coefficients, __local float* block, int x, int y) {
+	compute_idct(block_size_log_2, coefficients, block, y << block_size_log_2, 0, x);
 }
 
-void compute_idct_y(int block_size_log_2, __local float* block, int x, int y) {
-	compute_idct(block_size_log_2, block, x, block_size_log_2, y);
+void compute_idct_y(int block_size_log_2, __constant float* coefficients, __local float* block, int x, int y) {
+	compute_idct(block_size_log_2, coefficients, block, x, block_size_log_2, y);
 }
 
-void compute_idct_xy(int block_size_log_2, __local float* block, int x, int y) {
-	compute_idct_y(block_size_log_2, block, x, y);
-	compute_idct_x(block_size_log_2, block, x, y);
+void compute_idct_xy(int block_size_log_2, __constant float* coefficients, __local float* block, int x, int y) {
+	compute_idct_y(block_size_log_2, coefficients, block, x, y);
+	compute_idct_x(block_size_log_2, coefficients, block, x, y);
 }
 
 void copy_to_block(int block_size_log_2, __local float* target, float lhs, int x, int y) {
@@ -498,13 +498,13 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
 	copy_to_block(BLOCK_SIZE_LOG2, block1, read_imagef(source, sampler, coords).s0, lid.x, lid.y);
-	compute_dct_xy(BLOCK_SIZE_LOG2, block1, lid.x, lid.y);
+	compute_dct_xy(BLOCK_SIZE_LOG2, dct_coefficients_8x8, block1, lid.x, lid.y);
 	block_copy(BLOCK_SIZE_LOG2, block2, block1, lid.x, lid.y);
 	filter_block(BLOCK_SIZE_LOG2, block1, block1, lid.x, lid.y, min_strength);
 	filter_block(BLOCK_SIZE_LOG2, block2, block2, lid.x, lid.y, max_strength);
 	block_add(BLOCK_SIZE_LOG2, block, block1, block2, lid.x, lid.y);
 	block_mulf(BLOCK_SIZE_LOG2, block, block, 0.5f, lid.x, lid.y);
-	compute_idct_xy(BLOCK_SIZE_LOG2, block, lid.x, lid.y);
+	compute_idct_xy(BLOCK_SIZE_LOG2, dct_coefficients_8x8, block, lid.x, lid.y);
 	if (coords.x < 0 || coords.x >= ss.x) {
 		return;
 	}
