@@ -185,6 +185,16 @@ auto parse_block_size_log2(const char* raw_block_size_log_2)
 	return value;
 }
 
+auto parse_block_step(const char* raw_block_step)
+-> int {
+	auto value = atoi(raw_block_step);
+	if (value <= 0) {
+		fprintf(stderr, "Block step may not be negative or zero!\n");
+		throw EXIT_FAILURE;
+	}
+	return value;
+}
+
 auto get_opencl_status(int code)
 -> const char* {
 	switch (code) {
@@ -527,7 +537,7 @@ auto main(int argc, char** argv)
 -> int {
 	try {
 		auto status = CL_SUCCESS;
-		if (argc < 5 || argc > 7) {
+		if (argc < 5 || argc > 8) {
 			fprintf(stderr, "Please supply program arguments in the following order.\n");
 			fprintf(stderr, "\tEnum describing frame format.\n");
 			fprintf(stderr, "\tInteger describing frame width.\n");
@@ -535,6 +545,7 @@ auto main(int argc, char** argv)
 			fprintf(stderr, "\tNumber describing min denoising strength.\n");
 			fprintf(stderr, "\tNumber describing max denoising strength.\n");
 			fprintf(stderr, "\tNumber describing block size log 2.\n");
+			fprintf(stderr, "\tNumber describing block step.\n");
 			throw EXIT_FAILURE;
 		}
 		auto raw_format = argv[1];
@@ -543,18 +554,21 @@ auto main(int argc, char** argv)
 		auto raw_min_strength = argv[4];
 		auto raw_max_strength = argc >= 6 ? argv[5] : argv[4];
 		auto raw_block_size_log_2 = argc >= 7 ? argv[6] : "3";
+		auto raw_block_step = argc >= 8 ? argv[7] : "1";
 		auto arg_width = parse_width(raw_width);
 		auto arg_height = parse_height(raw_height);
 		auto arg_format = parse_format(raw_format, arg_width, arg_height);
 		auto arg_min_strength = parse_min_strength(raw_min_strength);
 		auto arg_max_strength = parse_max_strength(raw_max_strength);
 		auto arg_block_size_log2 = parse_block_size_log2(raw_block_size_log_2);
+		auto arg_block_step = parse_block_step(raw_block_step);
 		fprintf(stderr, "Frame format set to \"%s\".\n", raw_format);
 		fprintf(stderr, "Frame width set to %i.\n", arg_width);
 		fprintf(stderr, "Frame height set to %i.\n", arg_height);
 		fprintf(stderr, "Min denoising strength set to %f.\n", arg_min_strength);
 		fprintf(stderr, "Max denoising strength set to %f.\n", arg_max_strength);
 		fprintf(stderr, "Block size log 2 set to %i.\n", arg_block_size_log2);
+		fprintf(stderr, "Block step set to %i.\n", arg_block_step);
 		set_binary_input_output();
 		auto platform = get_opencl_platform();
 		auto device = get_opencl_device(platform);
@@ -617,7 +631,7 @@ auto main(int argc, char** argv)
 				auto& frame_prev = frames.at(compute_modulus(prev_frame_index, frame_buffer_capacity));
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto& frame_next = frames.at(compute_modulus(next_frame_index, frame_buffer_capacity));
-				filter_frame(queue, 1 << arg_block_size_log2, 1, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
+				filter_frame(queue, 1 << arg_block_size_log2, arg_block_step, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
 				frames_filtered += 1;
 				fprintf(stderr, "F: %i\n", i);
 			}
