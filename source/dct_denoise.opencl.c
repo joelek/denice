@@ -491,13 +491,13 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 	int2 coords = { gid.x - x, gid.y - y };
 	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
+	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
+	__local float block[BLOCK_SIZE * BLOCK_SIZE];
 	copy_to_block(block1, read_imagef(source, sampler, coords).s0, lid.x, lid.y);
 	compute_dct_xy(block1, lid.x, lid.y);
-	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
 	block_copy(block2, block1, lid.x, lid.y);
 	filter_block(block1, block1, lid.x, lid.y, min_strength);
 	filter_block(block2, block2, lid.x, lid.y, max_strength);
-	__local float block[BLOCK_SIZE * BLOCK_SIZE];
 	block_add(block, block1, block2, lid.x, lid.y);
 	block_mulf(block, block, 0.5f, lid.x, lid.y);
 	compute_idct_xy(block, lid.x, lid.y);
