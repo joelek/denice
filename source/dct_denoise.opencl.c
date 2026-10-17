@@ -515,7 +515,7 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
-normalize_kernel_8x(__write_only image2d_t target, __global float* buffer, __global float* counter) {
+normalize_kernel_8x8(__write_only image2d_t target, __global float* buffer, __global float* counter) {
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
 	int2 ts = { get_image_width(target), get_image_height(target) };
