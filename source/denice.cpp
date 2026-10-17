@@ -175,6 +175,16 @@ auto parse_max_strength(const char* raw_max_strength)
 	return value;
 }
 
+auto parse_block_size_log2(const char* raw_block_size_log_2)
+-> int {
+	auto value = atoi(raw_block_size_log_2);
+	if (value < 3 || value > 4) {
+		fprintf(stderr, "Block size log 2 must be between 3 and 4!\n");
+		throw EXIT_FAILURE;
+	}
+	return value;
+}
+
 auto get_opencl_status(int code)
 -> const char* {
 	switch (code) {
@@ -517,13 +527,14 @@ auto main(int argc, char** argv)
 -> int {
 	try {
 		auto status = CL_SUCCESS;
-		if (argc != 5 && argc != 6) {
+		if (argc < 5 || argc > 7) {
 			fprintf(stderr, "Please supply program arguments in the following order.\n");
 			fprintf(stderr, "\tEnum describing frame format.\n");
 			fprintf(stderr, "\tInteger describing frame width.\n");
 			fprintf(stderr, "\tInteger describing frame height.\n");
 			fprintf(stderr, "\tNumber describing min denoising strength.\n");
 			fprintf(stderr, "\tNumber describing max denoising strength.\n");
+			fprintf(stderr, "\tNumber describing block size log 2.\n");
 			throw EXIT_FAILURE;
 		}
 		auto raw_format = argv[1];
@@ -531,26 +542,27 @@ auto main(int argc, char** argv)
 		auto raw_height = argv[3];
 		auto raw_min_strength = argv[4];
 		auto raw_max_strength = argc >= 6 ? argv[5] : argv[4];
+		auto raw_block_size_log_2 = argc >= 7 ? argv[6] : "3";
 		auto arg_width = parse_width(raw_width);
 		auto arg_height = parse_height(raw_height);
 		auto arg_format = parse_format(raw_format, arg_width, arg_height);
 		auto arg_min_strength = parse_min_strength(raw_min_strength);
 		auto arg_max_strength = parse_max_strength(raw_max_strength);
+		auto arg_block_size_log2 = parse_block_size_log2(raw_block_size_log_2);
 		fprintf(stderr, "Frame format set to \"%s\".\n", raw_format);
 		fprintf(stderr, "Frame width set to %i.\n", arg_width);
 		fprintf(stderr, "Frame height set to %i.\n", arg_height);
 		fprintf(stderr, "Min denoising strength set to %f.\n", arg_min_strength);
 		fprintf(stderr, "Max denoising strength set to %f.\n", arg_max_strength);
+		fprintf(stderr, "Block size log 2 set to %i.\n", arg_block_size_log2);
 		set_binary_input_output();
 		auto platform = get_opencl_platform();
 		auto device = get_opencl_device(platform);
 		auto context = get_opencl_context(device);
 		auto queue = get_opencl_queue(context, device);
 		auto program = get_opencl_program(context, device, dct_denoise);
-		auto filter_kernel_8x8 = get_opencl_kernel(program, "filter_kernel_8x8");
-		auto normalize_kernel_8x8 = get_opencl_kernel(program, "normalize_kernel_8x8");
-		auto filter_kernel_16x16 = get_opencl_kernel(program, "filter_kernel_16x16");
-		auto normalize_kernel_16x16 = get_opencl_kernel(program, "normalize_kernel_16x16");
+		auto filter_kernel = get_opencl_kernel(program, arg_block_size_log2 == 3 ? "filter_kernel_8x8" : "filter_kernel_16x16");
+		auto normalize_kernel = get_opencl_kernel(program, arg_block_size_log2 == 3 ? "normalize_kernel_8x8" : "normalize_kernel_16x16");
 		auto frame_buffer_capacity = 3;
 		auto frames = std::vector<frame_t>();
 		for (auto i = 0; i < frame_buffer_capacity; i++) {
@@ -605,7 +617,7 @@ auto main(int argc, char** argv)
 				auto& frame_prev = frames.at(compute_modulus(prev_frame_index, frame_buffer_capacity));
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto& frame_next = frames.at(compute_modulus(next_frame_index, frame_buffer_capacity));
-				filter_frame(queue, 8, 1, filter_kernel_8x8, normalize_kernel_8x8, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
+				filter_frame(queue, 8, 1, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
 				frames_filtered += 1;
 				fprintf(stderr, "F: %i\n", i);
 			}
