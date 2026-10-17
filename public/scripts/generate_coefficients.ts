@@ -35,3 +35,5 @@ function generate_code(size: number, precision: number): string {
 }
 
 console.log(generate_code(8, 20));
+
+console.log(generate_code(16, 20));
