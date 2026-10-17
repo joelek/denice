@@ -327,28 +327,28 @@ __constant float dct_coefficients_16x16[256] = {
 	-0.03465429229977150249f
 };
 
-void convert_to_relative_range(__local float* target, __local float* lhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void convert_to_relative_range(int block_size_log_2, __local float* target, __local float* lhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	float s = lhs[offset];
 	s = (s * 2.0f) - 1.0f;
 	target[offset] = s;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void convert_to_absolute_range(__local float* target, __local float* lhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void convert_to_absolute_range(int block_size_log_2, __local float* target, __local float* lhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	float s = lhs[offset];
 	s = (s + 1.0f) * 0.5f;
 	target[offset] = s;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void compute_dct(__local float* block, int offset, int stride_log2, int k) {
+void compute_dct(int block_size_log_2, __local float* block, int offset, int stride_log2, int k) {
 	float s = 0.0f;
-	int block_size = (1 << BLOCK_SIZE_LOG2);
+	int block_size = (1 << block_size_log_2);
 	for (int n = 0; n < block_size; n++) {
 		float v = block[offset + (n << stride_log2)];
-		float c = dct_coefficients_8x8[(k << BLOCK_SIZE_LOG2) + n];
+		float c = dct_coefficients_8x8[(k << block_size_log_2) + n];
 		s += (v * c);
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -356,25 +356,25 @@ void compute_dct(__local float* block, int offset, int stride_log2, int k) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void compute_dct_x(__local float* block, int x, int y) {
-	compute_dct(block, y << BLOCK_SIZE_LOG2, 0, x);
+void compute_dct_x(int block_size_log_2, __local float* block, int x, int y) {
+	compute_dct(block_size_log_2, block, y << block_size_log_2, 0, x);
 }
 
-void compute_dct_y(__local float* block, int x, int y) {
-	compute_dct(block, x, BLOCK_SIZE_LOG2, y);
+void compute_dct_y(int block_size_log_2, __local float* block, int x, int y) {
+	compute_dct(block_size_log_2, block, x, block_size_log_2, y);
 }
 
-void compute_dct_xy(__local float* block, int x, int y) {
-	compute_dct_x(block, x, y);
-	compute_dct_y(block, x, y);
+void compute_dct_xy(int block_size_log_2, __local float* block, int x, int y) {
+	compute_dct_x(block_size_log_2, block, x, y);
+	compute_dct_y(block_size_log_2, block, x, y);
 }
 
-void compute_idct(__local float* block, int offset, int stride_log2, int k) {
+void compute_idct(int block_size_log_2, __local float* block, int offset, int stride_log2, int k) {
 	float s = 0.0f;
-	int block_size = (1 << BLOCK_SIZE_LOG2);
+	int block_size = (1 << block_size_log_2);
 	for (int n = 0; n < block_size; n++) {
 		float v = block[offset + (n << stride_log2)];
-		float c = dct_coefficients_8x8[(n << BLOCK_SIZE_LOG2) + k];
+		float c = dct_coefficients_8x8[(n << block_size_log_2) + k];
 		s += (v * c);
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -382,28 +382,28 @@ void compute_idct(__local float* block, int offset, int stride_log2, int k) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void compute_idct_x(__local float* block, int x, int y) {
-	compute_idct(block, y << BLOCK_SIZE_LOG2, 0, x);
+void compute_idct_x(int block_size_log_2, __local float* block, int x, int y) {
+	compute_idct(block_size_log_2, block, y << block_size_log_2, 0, x);
 }
 
-void compute_idct_y(__local float* block, int x, int y) {
-	compute_idct(block, x, BLOCK_SIZE_LOG2, y);
+void compute_idct_y(int block_size_log_2, __local float* block, int x, int y) {
+	compute_idct(block_size_log_2, block, x, block_size_log_2, y);
 }
 
-void compute_idct_xy(__local float* block, int x, int y) {
-	compute_idct_y(block, x, y);
-	compute_idct_x(block, x, y);
+void compute_idct_xy(int block_size_log_2, __local float* block, int x, int y) {
+	compute_idct_y(block_size_log_2, block, x, y);
+	compute_idct_x(block_size_log_2, block, x, y);
 }
 
-void copy_to_block(__local float* target, float lhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void copy_to_block(int block_size_log_2, __local float* target, float lhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-float block_avg(__local float* block) {
+float block_avg(int block_size_log_2, __local float* block) {
 	float sum = 0.0f;
-	int block_size = (1 << BLOCK_SIZE_LOG2);
+	int block_size = (1 << block_size_log_2);
 	for (int i = 0; i < block_size * block_size; i++) {
 		sum += block[i];
 	}
@@ -412,10 +412,10 @@ float block_avg(__local float* block) {
 	return sum;
 }
 
-float block_variance(__local float* block) {
-	float avg = block_avg(block);
+float block_variance(int block_size_log_2, __local float* block) {
+	float avg = block_avg(block_size_log_2, block);
 	float sum = 0.0f;
-	int block_size = (1 << BLOCK_SIZE_LOG2);
+	int block_size = (1 << block_size_log_2);
 	for (int i = 0; i < block_size * block_size; i++) {
 		float x = (block[i] - avg);
 		sum += (x * x);
@@ -425,60 +425,60 @@ float block_variance(__local float* block) {
 	return sum;
 }
 
-float block_stddev(__local float* block) {
-	return sqrt(block_variance(block));
+float block_stddev(int block_size_log_2, __local float* block) {
+	return sqrt(block_variance(block_size_log_2, block));
 }
 
-void block_abs(__local float* target, __local float* lhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_abs(int block_size_log_2, __local float* target, __local float* lhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = fabs(lhs[offset]);
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_add(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_add(int block_size_log_2, __local float* target, __local float* lhs, __local float* rhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset] + rhs[offset];
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_addf(__local float* target, __local float* lhs, float rhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_addf(int block_size_log_2, __local float* target, __local float* lhs, float rhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset] + rhs;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_sub(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_sub(int block_size_log_2, __local float* target, __local float* lhs, __local float* rhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset] - rhs[offset];
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_subf(__local float* target, __local float* lhs, float rhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_subf(int block_size_log_2, __local float* target, __local float* lhs, float rhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset] - rhs;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_mul(__local float* target, __local float* lhs, __local float* rhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_mul(int block_size_log_2, __local float* target, __local float* lhs, __local float* rhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset] * rhs[offset];
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_mulf(__local float* target, __local float* lhs, float rhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_mulf(int block_size_log_2, __local float* target, __local float* lhs, float rhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset] * rhs;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void block_copy(__local float* target, __local float* lhs, int x, int y) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void block_copy(int block_size_log_2, __local float* target, __local float* lhs, int x, int y) {
+	int offset = (y << block_size_log_2) + x;
 	target[offset] = lhs[offset];
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void filter_block(__local float* target, __local float* lhs, int x, int y, float threshold) {
-	int offset = (y << BLOCK_SIZE_LOG2) + x;
+void filter_block(int block_size_log_2, __local float* target, __local float* lhs, int x, int y, float threshold) {
+	int offset = (y << block_size_log_2) + x;
 	float s = lhs[offset];
 	if (offset > 0 && fabs(s) < fabs(threshold)) {
 		target[offset] = 0.0f;
@@ -497,14 +497,14 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
 	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
-	copy_to_block(block1, read_imagef(source, sampler, coords).s0, lid.x, lid.y);
-	compute_dct_xy(block1, lid.x, lid.y);
-	block_copy(block2, block1, lid.x, lid.y);
-	filter_block(block1, block1, lid.x, lid.y, min_strength);
-	filter_block(block2, block2, lid.x, lid.y, max_strength);
-	block_add(block, block1, block2, lid.x, lid.y);
-	block_mulf(block, block, 0.5f, lid.x, lid.y);
-	compute_idct_xy(block, lid.x, lid.y);
+	copy_to_block(BLOCK_SIZE_LOG2, block1, read_imagef(source, sampler, coords).s0, lid.x, lid.y);
+	compute_dct_xy(BLOCK_SIZE_LOG2, block1, lid.x, lid.y);
+	block_copy(BLOCK_SIZE_LOG2, block2, block1, lid.x, lid.y);
+	filter_block(BLOCK_SIZE_LOG2, block1, block1, lid.x, lid.y, min_strength);
+	filter_block(BLOCK_SIZE_LOG2, block2, block2, lid.x, lid.y, max_strength);
+	block_add(BLOCK_SIZE_LOG2, block, block1, block2, lid.x, lid.y);
+	block_mulf(BLOCK_SIZE_LOG2, block, block, 0.5f, lid.x, lid.y);
+	compute_idct_xy(BLOCK_SIZE_LOG2, block, lid.x, lid.y);
 	if (coords.x < 0 || coords.x >= ss.x) {
 		return;
 	}
