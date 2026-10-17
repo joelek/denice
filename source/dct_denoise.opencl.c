@@ -345,7 +345,8 @@ void convert_to_absolute_range(__local float* target, __local float* lhs, int x,
 
 void compute_dct(__local float* block, int offset, int stride_log2, int k) {
 	float s = 0.0f;
-	for (int n = 0; n < BLOCK_SIZE; n++) {
+	int block_size = (1 << BLOCK_SIZE_LOG2);
+	for (int n = 0; n < block_size; n++) {
 		float v = block[offset + (n << stride_log2)];
 		float c = dct_coefficients_8x8[(k << BLOCK_SIZE_LOG2) + n];
 		s += (v * c);
@@ -370,7 +371,8 @@ void compute_dct_xy(__local float* block, int x, int y) {
 
 void compute_idct(__local float* block, int offset, int stride_log2, int k) {
 	float s = 0.0f;
-	for (int n = 0; n < BLOCK_SIZE; n++) {
+	int block_size = (1 << BLOCK_SIZE_LOG2);
+	for (int n = 0; n < block_size; n++) {
 		float v = block[offset + (n << stride_log2)];
 		float c = dct_coefficients_8x8[(n << BLOCK_SIZE_LOG2) + k];
 		s += (v * c);
@@ -401,10 +403,11 @@ void copy_to_block(__local float* target, float lhs, int x, int y) {
 
 float block_avg(__local float* block) {
 	float sum = 0.0f;
-	for (int i = 0; i < (BLOCK_SIZE * BLOCK_SIZE); i++) {
+	int block_size = (1 << BLOCK_SIZE_LOG2);
+	for (int i = 0; i < block_size * block_size; i++) {
 		sum += block[i];
 	}
-	sum /= (BLOCK_SIZE * BLOCK_SIZE);
+	sum /= (block_size * block_size);
 	barrier(CLK_LOCAL_MEM_FENCE);
 	return sum;
 }
@@ -412,11 +415,12 @@ float block_avg(__local float* block) {
 float block_variance(__local float* block) {
 	float avg = block_avg(block);
 	float sum = 0.0f;
-	for (int i = 0; i < (BLOCK_SIZE * BLOCK_SIZE); i++) {
+	int block_size = (1 << BLOCK_SIZE_LOG2);
+	for (int i = 0; i < block_size * block_size; i++) {
 		float x = (block[i] - avg);
 		sum += (x * x);
 	}
-	sum /= (BLOCK_SIZE * BLOCK_SIZE);
+	sum /= (block_size * block_size);
 	barrier(CLK_LOCAL_MEM_FENCE);
 	return sum;
 }
