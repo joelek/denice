@@ -549,6 +549,8 @@ auto main(int argc, char** argv)
 		auto program = get_opencl_program(context, device, dct_denoise);
 		auto filter_kernel_8x8 = get_opencl_kernel(program, "filter_kernel_8x8");
 		auto normalize_kernel_8x8 = get_opencl_kernel(program, "normalize_kernel_8x8");
+		auto filter_kernel_16x16 = get_opencl_kernel(program, "filter_kernel_16x16");
+		auto normalize_kernel_16x16 = get_opencl_kernel(program, "normalize_kernel_16x16");
 		auto frame_buffer_capacity = 3;
 		auto frames = std::vector<frame_t>();
 		for (auto i = 0; i < frame_buffer_capacity; i++) {
