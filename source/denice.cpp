@@ -466,8 +466,8 @@ auto filter_channel(const cl::CommandQueue& queue, int block_size, cl::Kernel& f
 			OPENCL_CHECK_STATUS();
 			auto local_w = block_size;
 			auto local_h = block_size;
-			auto global_w = compute_global_size_ceil((data_channel.channel.w - x), local_w);
-			auto global_h = compute_global_size_ceil((data_channel.channel.h - y), local_h);
+			auto global_w = compute_global_size_ceil((data_channel.channel.w + x), local_w);
+			auto global_h = compute_global_size_ceil((data_channel.channel.h + y), local_h);
 			status = queue.enqueueNDRangeKernel(filter_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
 			OPENCL_CHECK_STATUS();
 		}

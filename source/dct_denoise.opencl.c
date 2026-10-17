@@ -1,6 +1,5 @@
 #define BLOCK_SIZE_LOG2 3
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
-#define BLOCK_MAX (BLOCK_SIZE - 1)
 
 __constant float dct_coefficients_8x8[64] = {
 	 0.35355339059327378637f,
@@ -489,7 +488,7 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 	int2 gid = { get_global_id(0), get_global_id(1) };
 	int2 lid = { get_local_id(0), get_local_id(1) };
 	int2 ss = { get_image_width(source), get_image_height(source) };
-	int2 coords = { gid.x + x, gid.y + y };
+	int2 coords = { gid.x - x, gid.y - y };
 	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
 	copy_to_block(block1, lid.x, lid.y, read_imagef(source, sampler, coords).s0);
@@ -502,10 +501,10 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 	block_add(block, block1, block2, lid.x, lid.y);
 	block_mulf(block, block, 0.5f, lid.x, lid.y);
 	compute_idct_xy(block, lid.x, lid.y);
-	if (coords.x >= ss.x) {
+	if (coords.x < 0 || coords.x >= ss.x) {
 		return;
 	}
-	if (coords.y >= ss.y) {
+	if (coords.y < 0 || coords.y >= ss.y) {
 		return;
 	}
 	float t = block[(lid.y << BLOCK_SIZE_LOG2) + lid.x];
