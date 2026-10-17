@@ -617,7 +617,7 @@ auto main(int argc, char** argv)
 				auto& frame_prev = frames.at(compute_modulus(prev_frame_index, frame_buffer_capacity));
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto& frame_next = frames.at(compute_modulus(next_frame_index, frame_buffer_capacity));
-				filter_frame(queue, 8, 1, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
+				filter_frame(queue, 1 << arg_block_size_log2, 1, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
 				frames_filtered += 1;
 				fprintf(stderr, "F: %i\n", i);
 			}
