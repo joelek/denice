@@ -327,19 +327,19 @@ __constant float dct_coefficients_16x16[256] = {
 	-0.03465429229977150249f
 };
 
-void convert_to_relative_range(__local float* block, int x, int y) {
+void convert_to_relative_range(__local float* target, __local float* lhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
-	float s = block[offset];
+	float s = lhs[offset];
 	s = (s * 2.0f) - 1.0f;
-	block[offset] = s;
+	target[offset] = s;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void convert_to_absolute_range(__local float* block, int x, int y) {
+void convert_to_absolute_range(__local float* target, __local float* lhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
-	float s = block[offset];
+	float s = lhs[offset];
 	s = (s + 1.0f) * 0.5f;
-	block[offset] = s;
+	target[offset] = s;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
@@ -393,9 +393,9 @@ void compute_idct_xy(__local float* block, int x, int y) {
 	compute_idct_x(block, x, y);
 }
 
-void copy_to_block(__local float* block, int x, int y, float s) {
+void copy_to_block(__local float* target, float lhs, int x, int y) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
-	block[offset] = s;
+	target[offset] = lhs;
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
@@ -473,11 +473,11 @@ void block_copy(__local float* target, __local float* lhs, int x, int y) {
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
 
-void filter_block(__local float* block, int x, int y, float threshold) {
+void filter_block(__local float* target, __local float* lhs, int x, int y, float threshold) {
 	int offset = (y << BLOCK_SIZE_LOG2) + x;
-	float s = block[offset];
+	float s = lhs[offset];
 	if (offset > 0 && fabs(s) < fabs(threshold)) {
-		block[offset] = 0.0f;
+		target[offset] = 0.0f;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 }
@@ -491,12 +491,12 @@ filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only i
 	int2 coords = { gid.x - x, gid.y - y };
 	sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
 	__local float block1[BLOCK_SIZE * BLOCK_SIZE];
-	copy_to_block(block1, lid.x, lid.y, read_imagef(source, sampler, coords).s0);
+	copy_to_block(block1, read_imagef(source, sampler, coords).s0, lid.x, lid.y);
 	compute_dct_xy(block1, lid.x, lid.y);
 	__local float block2[BLOCK_SIZE * BLOCK_SIZE];
 	block_copy(block2, block1, lid.x, lid.y);
-	filter_block(block1, lid.x, lid.y, min_strength);
-	filter_block(block2, lid.x, lid.y, max_strength);
+	filter_block(block1, block1, lid.x, lid.y, min_strength);
+	filter_block(block2, block2, lid.x, lid.y, max_strength);
 	__local float block[BLOCK_SIZE * BLOCK_SIZE];
 	block_add(block, block1, block2, lid.x, lid.y);
 	block_mulf(block, block, 0.5f, lid.x, lid.y);
