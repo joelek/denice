@@ -8,8 +8,6 @@
 #include <CL/cl.hpp>
 #include "dct_denoise.hpp"
 
-#define BLOCK_SIZE 8
-
 #ifdef DEBUG
 	#define OPENCL_CHECK_STATUS() \
 		if (status != CL_SUCCESS) { \
@@ -439,7 +437,7 @@ auto copy_frame_to_host(const cl::CommandQueue& queue, frame_t& frame, bool two_
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel_prev, const data_channel_t& data_channel, const data_channel_t& data_channel_next, float arg_min_strength, float arg_max_strength)
+auto filter_channel(const cl::CommandQueue& queue, int block_size, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, const data_channel_t& data_channel_prev, const data_channel_t& data_channel, const data_channel_t& data_channel_next, float arg_min_strength, float arg_max_strength)
 -> void {
 	auto status = CL_SUCCESS;
 	status = filter_kernel.setArg(0, data_channel.buffer);
@@ -460,14 +458,14 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 	queue.enqueueFillBuffer(data_channel.counter, 0.0f, 0, (data_channel.channel.w * data_channel.channel.h * sizeof(float)));
 	OPENCL_CHECK_STATUS();
-	for (auto y = 0; y < BLOCK_SIZE; y += 1) {
-		for (auto x = 0; x < BLOCK_SIZE; x += 1) {
+	for (auto y = 0; y < block_size; y += 1) {
+		for (auto x = 0; x < block_size; x += 1) {
 			status = filter_kernel.setArg(7, x);
 			OPENCL_CHECK_STATUS();
 			status = filter_kernel.setArg(8, y);
 			OPENCL_CHECK_STATUS();
-			auto local_w = BLOCK_SIZE;
-			auto local_h = BLOCK_SIZE;
+			auto local_w = block_size;
+			auto local_h = block_size;
 			auto global_w = compute_global_size_ceil((data_channel.channel.w - x), local_w);
 			auto global_h = compute_global_size_ceil((data_channel.channel.h - y), local_h);
 			status = queue.enqueueNDRangeKernel(filter_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
@@ -480,8 +478,8 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 	status = normalize_kernel.setArg(2, data_channel.counter);
 	OPENCL_CHECK_STATUS();
-	auto local_w = BLOCK_SIZE;
-	auto local_h = BLOCK_SIZE;
+	auto local_w = block_size;
+	auto local_h = block_size;
 	auto global_w = compute_global_size_ceil(data_channel.channel.w, local_w);
 	auto global_h = compute_global_size_ceil(data_channel.channel.h, local_h);
 	status = queue.enqueueNDRangeKernel(normalize_kernel, cl::NDRange(0, 0, 0), cl::NDRange(global_w, global_h, 1), cl::NDRange(local_w, local_h, 1));
@@ -490,13 +488,13 @@ auto filter_channel(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl
 	OPENCL_CHECK_STATUS();
 }
 
-auto filter_frame(const cl::CommandQueue& queue, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame_prev, frame_t& frame, frame_t& frame_next, float arg_min_strength, float arg_max_strength)
+auto filter_frame(const cl::CommandQueue& queue, int block_size, cl::Kernel& filter_kernel, cl::Kernel& normalize_kernel, frame_t& frame_prev, frame_t& frame, frame_t& frame_next, float arg_min_strength, float arg_max_strength)
 -> void {
 	for (auto i = 0; i < (int)frame.data_channels.size(); i += 1) {
 		auto& data_channel_prev = frame_prev.data_channels.at(i);
 		auto& data_channel = frame.data_channels.at(i);
 		auto& data_channel_next = frame_next.data_channels.at(i);
-		filter_channel(queue, filter_kernel, normalize_kernel, data_channel_prev, data_channel, data_channel_next, arg_min_strength, arg_max_strength);
+		filter_channel(queue, block_size, filter_kernel, normalize_kernel, data_channel_prev, data_channel, data_channel_next, arg_min_strength, arg_max_strength);
 	}
 }
 
@@ -549,8 +547,8 @@ auto main(int argc, char** argv)
 		auto context = get_opencl_context(device);
 		auto queue = get_opencl_queue(context, device);
 		auto program = get_opencl_program(context, device, dct_denoise);
-		auto filter_kernel = get_opencl_kernel(program, "filter_kernel");
-		auto normalize_kernel = get_opencl_kernel(program, "normalize_kernel");
+		auto filter_kernel_8x8 = get_opencl_kernel(program, "filter_kernel_8x8");
+		auto normalize_kernel_8x8 = get_opencl_kernel(program, "normalize_kernel_8x8");
 		auto frame_buffer_capacity = 3;
 		auto frames = std::vector<frame_t>();
 		for (auto i = 0; i < frame_buffer_capacity; i++) {
@@ -605,7 +603,7 @@ auto main(int argc, char** argv)
 				auto& frame_prev = frames.at(compute_modulus(prev_frame_index, frame_buffer_capacity));
 				auto& frame = frames.at(compute_modulus(i, frame_buffer_capacity));
 				auto& frame_next = frames.at(compute_modulus(next_frame_index, frame_buffer_capacity));
-				filter_frame(queue, filter_kernel, normalize_kernel, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
+				filter_frame(queue, 8, filter_kernel_8x8, normalize_kernel_8x8, frame_prev, frame, frame_next, arg_min_strength, arg_max_strength);
 				frames_filtered += 1;
 				fprintf(stderr, "F: %i\n", i);
 			}
