@@ -486,6 +486,32 @@ void filter_block(int block_size_log_2, __local float* target, __local float* lh
 #define BLOCK_SIZE_LOG2 3
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
 
+float block_flatness_8x8(__local float* block) {
+	float acs[BLOCK_SIZE];
+	for (int i = 0; i < BLOCK_SIZE; i++) {
+		acs[i] = 0.0f;
+	}
+	float total_ac = 0.0f;
+	int count_ac = 0;
+	for (int y = 0; y < BLOCK_SIZE; y++) {
+		for (int x = 0; x < BLOCK_SIZE; x++) {
+			float value = fabs(block[(y << BLOCK_SIZE_LOG2) + x]);
+			if (x + y > 0 && x + y < BLOCK_SIZE) {
+				acs[x + y] += value;
+				total_ac += value;
+				count_ac += 1;
+			}
+		}
+	}
+	float avg_ac = total_ac / count_ac;
+	float max_diag_ac = 0.0f;
+	for (int i = 0; i < BLOCK_SIZE; i++) {
+		max_diag_ac = max(acs[i], max_diag_ac);
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+	return avg_ac / max_diag_ac;
+}
+
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
 filter_kernel_8x8(__global float* buffer, __global float* counter, __read_only image2d_t source_prev, __read_only image2d_t source, __read_only image2d_t source_next, float min_strength, float max_strength, int x, int y) {
@@ -540,6 +566,32 @@ normalize_kernel_8x8(__write_only image2d_t target, __global float* buffer, __gl
 
 #define BLOCK_SIZE_LOG2 4
 #define BLOCK_SIZE (1 << BLOCK_SIZE_LOG2)
+
+float block_flatness_16x16(__local float* block) {
+	float acs[BLOCK_SIZE];
+	for (int i = 0; i < BLOCK_SIZE; i++) {
+		acs[i] = 0.0f;
+	}
+	float total_ac = 0.0f;
+	int count_ac = 0;
+	for (int y = 0; y < BLOCK_SIZE; y++) {
+		for (int x = 0; x < BLOCK_SIZE; x++) {
+			float value = fabs(block[(y << BLOCK_SIZE_LOG2) + x]);
+			if (x + y > 0 && x + y < BLOCK_SIZE) {
+				acs[x + y] += value;
+				total_ac += value;
+				count_ac += 1;
+			}
+		}
+	}
+	float avg_ac = total_ac / count_ac;
+	float max_diag_ac = 0.0f;
+	for (int i = 0; i < BLOCK_SIZE; i++) {
+		max_diag_ac = max(acs[i], max_diag_ac);
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+	return avg_ac / max_diag_ac;
+}
 
 __kernel void
 __attribute__((reqd_work_group_size(BLOCK_SIZE, BLOCK_SIZE, 1)))
